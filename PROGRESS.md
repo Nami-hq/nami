@@ -3,9 +3,8 @@
 ## Goal
 Ship three things for NAMI (the desktop GUI over `ani-cli`): real downloadable
 packages for Windows/Fedora/Arch, a professional landing page in `site/`, and a
-trailer video. Acceptance: every download link on the page resolves to a file
-that exists and, for Linux, one that runs on this machine; the page passes the
-design-taste-frontend gate.
+trailer video. Acceptance: the page is live, every download link on it resolves
+to a file that exists, and for Linux one that runs on this machine.
 
 ## Done
 - Desktop app: glass UI, dark + light themes persisted through settings, player
@@ -15,55 +14,76 @@ design-taste-frontend gate.
   after-restart match, no console errors.
 - `DESIGN.md` written (token system, both palettes, always-dark player).
 - Packaging, all built on this host:
-  - `dist/NAMI-0.1.0-x86_64.AppImage` (120.1 MiB) — booted.
-  - `dist/NAMI-0.1.0-x86_64.rpm` (93.5 MiB) — extracted, payload booted.
-  - `dist/NAMI-0.1.0-setup.exe` (115.9 MiB) — NSIS built without Wine; not run
-    on Windows.
-  - `packaging/arch/PKGBUILD` + `nami-0.1.0.tar.gz` — `bash -n` clean; not built
-    (`makepkg` absent on this Fedora host).
-- Landing page `site/index.html` written end to end (nav-centre, hero, 2×2
-  features, download + player mock + 5 per-platform rows, questions, footer).
-  Phone rhythm 390 = 8 screens; phone trims applied.
+  - `NAMI-0.1.0-x86_64.AppImage` (120.1 MiB) — booted.
+  - `NAMI-0.1.0-x86_64.rpm` (93.5 MiB) — extracted, payload booted.
+  - `NAMI-0.1.0-setup.exe` (115.9 MiB) — NSIS built without Wine; not run on
+    Windows.
+  - `packaging/arch/PKGBUILD` + source tarball — `bash -n` clean; not built
+    (`makepkg` is not on this host).
+- Landing page `site/index.html`: nav-centre, hero, 2×2 features, download with
+  the player mock and 5 per-platform rows, questions, footer.
 - Landing page gate (`gate.mjs --quick`, 1440 + 390): **1 FAIL** — `tilt` on the
   hero window, which the brief asked for — and 15 WARNs. All `section-height`,
   `section-gaps`, `dark-ground` FAILs are cleared and probe-verified.
-- `nami/` is a git repo on `main`; commit `d13b03b` holds app + packaging + page.
+- `site/assets` pruned 38 MiB → 916 KiB (the 30 files Chrome actually loads).
+  Full-page 390px shot is pixel-identical before and after (`compare -metric AE`
+  = `0 (0)`).
+- Published to **https://github.com/nami-hq/nami** (org created by the user;
+  the repo was first made under `qusai64574-gif` and transferred, so the old
+  URLs 200-redirect).
+- Release **v0.1.0** carries 5 assets. All five URLs under
+  `https://github.com/nami-hq/nami/releases/download/v0.1.0/` return 200:
+  `NAMI-0.1.0-setup.exe`, `NAMI-0.1.0-x86_64.AppImage`,
+  `NAMI-0.1.0-x86_64.rpm`, `PKGBUILD`, `nami-0.1.0.tar.gz`.
+- Arch source tarball is reproducible (`--sort=name --mtime --owner=0
+  --numeric-owner | gzip -9n`), so a CI rebuild gives the same sha256 the
+  PKGBUILD records. Verified: the asset hashes to
+  `0b9b8e68bf09ce8872c09d1d74decd54981b6bc5a5afab0f3ad5ac9fad1a8538`, the same
+  value in the uploaded PKGBUILD.
+- Landing page live at **https://nami-hq.github.io/nami/** via
+  `.github/workflows/pages.yml`; the served HTML carries all 5 release links.
+- Trailer project scaffolded at `trailer/` (`hyperframes init`). Storyline 1,
+  "A night in one take", picked by the user. `trailer/STORYLINES.md` holds all
+  three.
 
 ## Next
-1. Trailer video for NAMI. Not started.
-2. User decisions: repo owner/name slug, go-ahead to push, and how to close the
-   page's build in the gate (`--done` with their words, or drop the 3D tilt).
-   Real download URLs, the PKGBUILD `source` and the Windows CI need the push.
+1. Trailer: write `trailer/SPEC.md` from `references/spec.md`, then build the
+   scenes, `npx hyperframes check`, snapshot review, and render. Storyline 1:
+   one continuous take, 45–55 s, 1920×1080 at 30 fps, no voiceover, synthesized
+   sound only.
+2. Capture the real UI for the trailer: the packaged app runs with
+   `--remote-debugging-port` and its renderer screenshots through CDP at any
+   size (`/tmp/opencode/cap-app.mjs`). x11grab is black on this Wayland session.
+3. Close the design gate for the page with `gate.mjs --done "<the user's words>"`.
+   The user chose that path; a verbatim line of ≥12 characters is still needed.
 
 ## Open questions
-- Publish to a public GitHub repo? `nami-inc/nami` is what the files say today;
-  the user said "Nami.co or inc or smt like that" — the exact slug is unconfirmed
-  and the org does not exist yet.
-- `site/assets/` carries the taste-skill's whole library (39 MiB); the page
-  references ~23 files. Publishing redistributes third-party code and dead
-  weight. Not resolved.
-- Android: needs a separate mobile project. The page says "Not yet".
+- Close the gate with the user's words, or strip the 3D tilt and the scroll
+  reveals? Asked; the user chose their own words. Waiting on the line.
+- The trailer's 6 s tension beat shows a terminal running `ani-cli`. If real
+  `ani-cli` output cannot be captured cleanly, it becomes a labelled placeholder.
 
 ## Key facts
-- Measured page FAILs that remain: `tilt` at 1440 only (accepted: the brief asked
-  for a tilting 3D hero window). `scroll-reveal` FAILs appear only in a non-quick
-  gate round; `--quick` skips motion checks. Both are user-accepted.
-- Remaining WARNs (15), by check: `nav-labels` ~8, `no-visual` 2,
+- Remaining page WARNs (15), by check: `nav-labels` ~8, `no-visual` 2,
   `text-contrast` 2, `section-gaps` 1, `copy-length` 1, `action-repeat` 1,
-  `cta` 1, `visual-caption` 1.
-- `#features` at 1440 sits exactly at its T-fit limit (content bottom =
-  section bottom − padb), so adding any content to it breaks `section-height`.
-- CSS rule that matters: the checker's first-screen-group budget applies only to
-  `.g2` sections (`isG2` in consistency.mjs ~2342).
-- Ground tokens: `--ground-bg: #93c2ee` etc. (index.html ~40 and ~54). Do not go
-  lighter than `#a0cef2` — OKLab chroma crosses 0.07 and `paletteKind` flips to
-  `light`, which breaks `dark-ground`.
+  `cta` 1, `visual-caption` 1. `#features` at 1440 sits exactly at its T-fit
+  limit, so adding content there breaks `section-height`.
+- `gate.mjs --quick` skips motion checks; `scroll-reveal` FAILs appear only in a
+  full round, and with `tilt` there are more than `MAX_WAIVERS = 5`, so
+  `--done` is the only way to keep both.
+- Ground tokens: `--ground-bg: #93c2ee` etc. (`site/index.html` ~40 and ~54).
+  Never lighter than `#a0cef2` — OKLab chroma crosses 0.07 and `paletteKind`
+  flips, which breaks `dark-ground`.
 - Design-skill scripts need
-  `CHROME_PATH=~/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`;
-  one headless Chrome at a time. Gate: `.taste-skill/build.json` is armed.
-- Probes (in `/tmp/opencode`): `measure.mjs` (CDP + `--probe`), `probe-checker.js`
-  (per-section g1/g2 boxes), `extent.js` (content extents + gaps),
-  `grounds.mjs` (dark-ground ratios), `shot-section.mjs` (section screenshot).
-- `appimagetool` and `makepkg` are absent here; `rpmbuild`, `fakeroot`, `ar`,
-  `inkscape`, `7z` are present. Host: Nobara 44 (Fedora-family), x86_64.
+  `CHROME_PATH=~/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`; one
+  headless Chrome at a time.
+- Probes in `/tmp/opencode`: `measure.mjs`, `probe-checker.js`, `extent.js`,
+  `grounds.mjs`, `shot-section.mjs`, `assets-used.mjs`, `cap-app.mjs`,
+  `run-app.sh`.
+- Push and release both work as `qusai64574-gif` (the org owner) with scopes
+  `gist`, `read:org`, `repo`, `workflow`. No API can create an org; that is a
+  browser step.
+- Host: Nobara 44 (Fedora family), x86_64, Wayland with `DISPLAY=:0`.
+  `appimagetool` and `makepkg` are absent; `rpmbuild`, `fakeroot`, `ar`,
+  `ffmpeg`, `gh`, `hyperframes` 0.9.9 are present.
 - Runtime deps not bundled: `ani-cli` (`server/scrape.js:367`) and `yt-dlp`.

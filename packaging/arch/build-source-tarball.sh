@@ -26,6 +26,7 @@ tar cf - -C "$(dirname "$root")" \
   --exclude='.shots' \
   --exclude="nami-$version.tar.gz" \
   --exclude='PKGBUILD' \
+  --exclude='*.md' \
   --exclude='*.log' \
   --sort=name \
   --mtime='UTC 2020-01-01' \

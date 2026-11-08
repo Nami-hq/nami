@@ -17,7 +17,7 @@ makedepends=('nodejs' 'npm')
 options=('!strip' '!debug')
 
 source=("$pkgname-$pkgver.tar.gz::https://github.com/nami-hq/nami/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
-sha256sums=('0b9b8e68bf09ce8872c09d1d74decd54981b6bc5a5afab0f3ad5ac9fad1a8538')
+sha256sums=('927b797cff380007abce48ac46b3fa5c50c90e684df49cda78272ecdc6401fc0')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
