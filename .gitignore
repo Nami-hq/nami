@@ -4,5 +4,7 @@ site/dist/
 site/.shots/
 site/.taste-skill/
 .taste-skill/
+trailer/node_modules/
+trailer/renders/
 *.log
 packaging/arch/nami-*.tar.gz

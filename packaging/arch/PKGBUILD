@@ -1,6 +1,6 @@
 # Maintainer: NAMI <nami@example.com>
 # The source tarball is the release asset beside this file:
-#   https://github.com/qusai64574-gif/nami/releases/download/v0.1.0/nami-0.1.0.tar.gz
+#   https://github.com/nami-hq/nami/releases/download/v0.1.0/nami-0.1.0.tar.gz
 # Rebuild it with packaging/arch/build-source-tarball.sh after any source change,
 # then update sha256sums below. The tarball excludes the PKGBUILD itself, so this
 # file and its hash do not depend on each other.
@@ -10,14 +10,14 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="A glass anime player for ani-cli"
 arch=('x86_64')
-url="https://github.com/qusai64574-gif/nami"
+url="https://github.com/nami-hq/nami"
 license=('MIT')
 depends=('ani-cli' 'yt-dlp' 'gtk3' 'nss' 'alsa-lib' 'libnotify' 'xdg-utils' 'at-spi2-core')
 makedepends=('nodejs' 'npm')
 options=('!strip' '!debug')
 
-source=("$pkgname-$pkgver.tar.gz::https://github.com/qusai64574-gif/nami/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
-sha256sums=('509ac0dc9805fea5cc606062d92f1f0ea15cf37262ecc2847ed273761c317bf9')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/nami-hq/nami/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('0b9b8e68bf09ce8872c09d1d74decd54981b6bc5a5afab0f3ad5ac9fad1a8538')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"

@@ -10,7 +10,7 @@
     "email": "nami@example.com"
   },
   "license": "MIT",
-  "homepage": "https://github.com/qusai64574-gif/nami",
+  "homepage": "https://github.com/nami-hq/nami",
   "desktopName": "nami.desktop",
   "scripts": {
     "start": "electron .",
