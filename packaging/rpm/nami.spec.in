@@ -1,0 +1,48 @@
+%global debug_package %{nil}
+%global __strip /bin/true
+
+Name:           nami
+Version:        @VERSION@
+Release:        1
+Summary:        A glass anime player for ani-cli
+License:        MIT
+URL:            https://nami.example.com
+Source0:        %{name}-%{version}-app.tar.gz
+Source1:        nami.desktop
+Source2:        nami.png
+BuildArch:      x86_64
+AutoReqProv:    no
+
+Requires:       gtk3
+Requires:       nss
+Requires:       libXScrnSaver
+Requires:       xdg-utils
+Requires:       at-spi2-core
+Requires:       alsa-lib
+Requires:       libnotify
+
+%description
+NAMI plays anime through your installed ani-cli. It has an iOS 26 Liquid Glass
+interface, an in-app player, and light and dark themes.
+
+ani-cli and yt-dlp are runtime dependencies and are installed separately.
+
+%prep
+# The app tree ships ready to unpack; nothing to prepare.
+
+%build
+
+%install
+mkdir -p "%{buildroot}/opt/nami"
+tar -xzf "%{SOURCE0}" -C "%{buildroot}/opt/nami"
+install -Dm644 "%{SOURCE1}" "%{buildroot}%{_datadir}/applications/nami.desktop"
+install -Dm644 "%{SOURCE2}" "%{buildroot}%{_datadir}/icons/hicolor/1024x1024/apps/nami.png"
+
+%files
+/opt/nami
+%{_datadir}/applications/nami.desktop
+%{_datadir}/icons/hicolor/1024x1024/apps/nami.png
+
+%changelog
+* Sun Nov 08 2026 NAMI <nami@example.com> - @VERSION@-1
+- Initial package

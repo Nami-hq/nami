@@ -1,0 +1,39 @@
+# Maintainer: NAMI <nami@example.com>
+# Builds from the source tarball shipped beside this file:
+#   packaging/arch/build-source-tarball.sh   (run once in the project root)
+#
+# Once the repository is public and a release is cut, swap the local source for
+# the release tarball and fill in its real hash:
+#   source=("$pkgname-$pkgver.tar.gz::https://github.com/nami-inc/nami/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+#   sha256sums=('<sha256 of that tarball>')
+# The local source below keeps makepkg working before that release exists.
+
+pkgname=nami
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A glass anime player for ani-cli"
+arch=('x86_64')
+url="https://github.com/nami-inc/nami"
+license=('MIT')
+depends=('ani-cli' 'yt-dlp' 'gtk3' 'nss' 'alsa-lib' 'libnotify' 'xdg-utils' 'at-spi2-core')
+makedepends=('nodejs' 'npm')
+options=('!strip' '!debug')
+
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver"
+  npm ci
+  npx electron-builder --linux dir --publish never
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+
+  install -d "$pkgdir/opt/$pkgname"
+  cp -a dist/linux-unpacked/. "$pkgdir/opt/$pkgname/"
+
+  install -Dm644 packaging/rpm/nami.desktop "$pkgdir/usr/share/applications/nami.desktop"
+  install -Dm644 build/icon.png "$pkgdir/usr/share/icons/hicolor/1024x1024/apps/nami.png"
+}

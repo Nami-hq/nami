@@ -1,0 +1,67 @@
+{
+  "name": "nami",
+  "productName": "NAMI",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A glass anime player for ani-cli",
+  "main": "main.js",
+  "author": {
+    "name": "NAMI",
+    "email": "nami@example.com"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/nami-inc/nami",
+  "desktopName": "nami.desktop",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "pack:linux": "electron-builder --linux AppImage --publish never",
+    "pack:rpm": "packaging/rpm/build.sh",
+    "pack:win": "electron-builder --win nsis --publish never"
+  },
+  "build": {
+    "appId": "com.nami.player",
+    "productName": "NAMI",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "electron/**/*",
+      "server/**/*",
+      "app/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "executableName": "nami",
+      "syncDesktopName": true,
+      "category": "AudioVideo",
+      "synopsis": "A glass anime player for ani-cli",
+      "description": "NAMI plays anime through your installed ani-cli, with an iOS 26 Liquid Glass interface, an in-app player, and light and dark themes."
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  }
+}

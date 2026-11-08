@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=NAMI
+Comment=A glass anime player for ani-cli
+Exec=/opt/nami/nami %U
+Terminal=false
+Categories=AudioVideo;Player;
+Keywords=anime;player;ani-cli;
+StartupWMClass=nami
+StartupNotify=true
+Icon=nami

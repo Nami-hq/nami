@@ -1,0 +1,67 @@
+# Build and attach the desktop artifacts to a GitHub Release.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Windows and Linux (AppImage + RPM) are built here; the Arch package is a
+# PKGBUILD and its source tarball, published as-is for makepkg.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run pack:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win
+          path: dist/*.exe
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: rpmbuild for the Fedora package
+        run: sudo apt-get update && sudo apt-get install -y rpm
+      - run: npm ci
+      - run: npm run pack:linux
+      - run: npm run pack:rpm
+      - name: Arch package sources
+        run: bash packaging/arch/build-source-tarball.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            dist/*.AppImage
+            dist/*.rpm
+            packaging/arch/PKGBUILD
+            packaging/arch/nami-*.tar.gz
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Attach every artifact to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            win/*
+            linux/*
+          draft: false
+          generate_release_notes: true
