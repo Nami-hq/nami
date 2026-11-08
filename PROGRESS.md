@@ -42,26 +42,29 @@ to a file that exists, and for Linux one that runs on this machine.
   value in the uploaded PKGBUILD.
 - Landing page live at **https://nami-hq.github.io/nami/** via
   `.github/workflows/pages.yml`; the served HTML carries all 5 release links.
-- Trailer project scaffolded at `trailer/` (`hyperframes init`). Storyline 1,
-  "A night in one take", picked by the user. `trailer/STORYLINES.md` holds all
-  three.
+- Design gate closed on the owner's word "Do whatever is better"
+  (`GATE: DONE`), so the 3D tilt and scroll reveals stay on the page.
+- Trailer built at `trailer/`: 57 s, 1920×1080, 30 fps, one continuous camera
+  ("A night in one take", `trailer/STORYLINES.md`). Cut to the owner's track
+  `trailer/assets/audio/bed.mp3` (60.1 s, kept as supplied), used as
+  `bed-film.mp3` (57 s, 1.6 s tail fade); hits at 16.0, 20.0, 24.0, 26.5, 32.0,
+  36.0, 40.0, 43.5, 47.5, 50.0, 51.5 are 0 ms `tl.set`s. Kinetic type carries
+  "THE ANI-CLI GUI?" (16 s), "ani-cli, in a real window." (40 s) and "no browser.
+  no localhost. no server." (43.5 s). `npx hyperframes check`: 0 errors; 7
+  accepted structural warnings, argued in `trailer/REVIEW.md`.
+- Real material in the trailer: `assets/ui/*.webp` (2640×1720 renderer captures),
+  `assets/ui/player-hd.mp4` (1526×994 @ 15 fps, recorded at the window's own
+  size, so the payoff is never upscaled), `assets/anicli.out`, `assets/icon.png`.
 
 ## Next
-1. Trailer: write `trailer/SPEC.md` from `references/spec.md`, then build the
-   scenes, `npx hyperframes check`, snapshot review, and render. Storyline 1:
-   one continuous take, 45–55 s, 1920×1080 at 30 fps, no voiceover, synthesized
-   sound only.
-2. Capture the real UI for the trailer: the packaged app runs with
-   `--remote-debugging-port` and its renderer screenshots through CDP at any
-   size (`/tmp/opencode/cap-app.mjs`). x11grab is black on this Wayland session.
-3. Close the design gate for the page with `gate.mjs --done "<the user's words>"`.
-   The user chose that path; a verbatim line of ≥12 characters is still needed.
+1. Trailer render + `ffprobe` verification (57.0 s, 1920×1080, 30 fps, audio
+   stream), then a frame look at 16.3 / 24.5 / 33 / 41 / 48 / 52 s.
+2. Commit `trailer/` and push to `main`. Do not push a tag casually:
+   `release.yml` would rebuild and replace the release assets.
 
 ## Open questions
-- Close the gate with the user's words, or strip the 3D tilt and the scroll
-  reveals? Asked; the user chose their own words. Waiting on the line.
-- The trailer's 6 s tension beat shows a terminal running `ani-cli`. If real
-  `ani-cli` output cannot be captured cleanly, it becomes a labelled placeholder.
+- `site/assets` still carries files from the design-taste-frontend skill and the
+  app fonts (Geist, Instrument Serif) in a public repo; licensing unconfirmed.
 
 ## Key facts
 - Remaining page WARNs (15), by check: `nav-labels` ~8, `no-visual` 2,
@@ -85,5 +88,7 @@ to a file that exists, and for Linux one that runs on this machine.
   browser step.
 - Host: Nobara 44 (Fedora family), x86_64, Wayland with `DISPLAY=:0`.
   `appimagetool` and `makepkg` are absent; `rpmbuild`, `fakeroot`, `ar`,
-  `ffmpeg`, `gh`, `hyperframes` 0.9.9 are present.
+  `ffmpeg`, `gh` are present. Trailer runs `hyperframes@0.9.22` through `npx`.
+- `/tmp` is a 1.8 GB tmpfs, so renders there fail with "Low disk space". Run
+  them with `TMPDIR=/home/qusai13q/.cache/hf-tmp`.
 - Runtime deps not bundled: `ani-cli` (`server/scrape.js:367`) and `yt-dlp`.

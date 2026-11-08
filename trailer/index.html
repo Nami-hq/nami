@@ -3,14 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
+    <title>NAMI</title>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
     <style>
-      /* Placeholders: replace all three with the film's own palette and display face. */
-      :root {
-        --ground: #000;
-        --ink: #ffffff;
-        --font-display: sans-serif;
+      @font-face {
+        font-family: Geist;
+        src: url("assets/fonts/geist-400.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
       }
+      @font-face {
+        font-family: Geist;
+        src: url("assets/fonts/geist-500.woff2") format("woff2");
+        font-weight: 500;
+        font-display: block;
+      }
+      @font-face {
+        font-family: Geist;
+        src: url("assets/fonts/geist-600.woff2") format("woff2");
+        font-weight: 600;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("assets/fonts/geist-mono-400.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
+      }
+
+      :root {
+        --ground: #070a11;
+        --ink: #eef2fa;
+        --ink-2: #ccd5e6;
+        --ink-3: #9ba7bf;
+        --accent: #ff8a66;
+        --win-x: 196.8px;
+        --win-y: 42.75px;
+        --win-w: 1526.4px;
+        --win-h: 994.5px;
+        --radius: 18px;
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -23,20 +56,380 @@
         height: 1080px;
         overflow: hidden;
         background: var(--ground);
+        font-family: Geist, sans-serif;
+        color: var(--ink);
       }
-      #root {
+
+      #camera {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 1080px;
+        transform-origin: 0 0;
+        perspective: 1800px;
+        perspective-origin: 50% 45%;
+      }
+
+      /* ---------- the terminal ---------- */
+      #term {
+        position: absolute;
+        z-index: 1;
+        left: var(--win-x);
+        top: var(--win-y);
+        width: var(--win-w);
+        height: var(--win-h);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: #0b0e14;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+          0 24px 50px -34px rgba(0, 0, 0, 0.9);
+        transform-origin: 50% 60%;
+      }
+      #term-chrome {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 46px;
+        padding: 0 22px;
+        background: #14181f;
+        box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.07);
+      }
+      .dot {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: #39414e;
+      }
+      #term-title {
+        font-family: "Geist Mono", monospace;
+        font-size: 22px;
+        color: #7d8798;
+        margin-left: 8px;
+      }
+      #term-body {
+        font-family: "Geist Mono", monospace;
+        font-size: 29px;
+        line-height: 1.48;
+        color: #cbd4e0;
+        padding: 28px 40px 0;
+        overflow-wrap: anywhere;
+      }
+      #term-body .cmd {
+        color: #eef2fa;
+      }
+      #term-body .blue {
+        color: #6da8f7;
+      }
+      #term-body .dim {
+        color: #8d97a8;
+      }
+      .line {
+        display: block;
+        white-space: pre-wrap;
+      }
+      .typed {
+        display: inline-block;
+        overflow: hidden;
+        white-space: nowrap;
+        vertical-align: bottom;
+        width: 15ch;
+      }
+      .caret {
+        display: inline-block;
+        width: 15px;
+        height: 32px;
+        background: #eef2fa;
+        vertical-align: -4px;
+      }
+
+      /* ---------- the app window ---------- */
+      #win {
+        position: absolute;
+        z-index: 2;
+        left: var(--win-x);
+        top: var(--win-y);
+        width: var(--win-w);
+        height: var(--win-h);
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: #070a11;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+          0 24px 50px -34px rgba(0, 0, 0, 0.9);
+        transform-origin: 50% 55%;
+      }
+      .plate {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
+        object-fit: fill;
+      }
+
+      /* a light band that crosses the window on the hits: rotate on the wrapper,
+         translate on the band, so GSAP never fights a CSS transform */
+      .sweep {
+        position: absolute;
+        inset: -20% -30%;
+        pointer-events: none;
+        transform: rotate(14deg);
+      }
+      .sweep i {
+        position: absolute;
+        top: 0;
+        left: -520px;
+        width: 420px;
+        height: 100%;
+        background: linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0) 0%,
+          rgba(255, 255, 255, 0.13) 50%,
+          rgba(255, 255, 255, 0) 100%
+        );
+        opacity: 0;
+      }
+
+      /* the poster that travels from the grid card to the detail view */
+      #flip {
+        position: absolute;
+        z-index: 6;
+        left: 327.47px;
+        top: 167.29px;
+        width: 346.91px;
+        height: 520.36px;
+        border-radius: 12px;
+        object-fit: cover;
+        overflow: hidden;
+        transform-origin: 0 0;
+        box-shadow: 0 24px 48px -26px rgba(0, 0, 0, 0.82);
+      }
+
+      /* ---------- the player ---------- */
+      /* the black the footage sits in; wipes with the clip so the reveal stays one edge */
+      #player {
+        position: absolute;
+        z-index: 3;
+        left: var(--win-x);
+        top: var(--win-y);
+        width: var(--win-w);
+        height: var(--win-h);
+        background: #000;
+        border-radius: var(--radius);
+        clip-path: inset(0 var(--wipe, 0%) 0 0 round var(--radius));
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+        pointer-events: none;
+      }
+      /* the clip itself: real footage, recorded at the window's own size */
+      #player-video {
+        position: absolute;
+        z-index: 4;
+        left: var(--win-x);
+        top: var(--win-y);
+        width: var(--win-w);
+        height: var(--win-h);
+        object-fit: contain;
+        display: block;
+        background: #000;
+        clip-path: inset(0 var(--wipe, 0%) 0 0 round var(--radius));
+      }
+
+      /* ---------- the glow that answers each hit ---------- */
+      #glow {
+        position: absolute;
+        z-index: 1;
+        left: 50%;
+        top: 48%;
+        width: 1900px;
+        height: 1200px;
+        margin: -600px 0 0 -950px;
+        background: radial-gradient(
+          50% 50% at 50% 50%,
+          rgba(255, 138, 102, 0.3) 0%,
+          rgba(255, 122, 82, 0.12) 34%,
+          rgba(255, 138, 102, 0) 68%
+        );
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* ---------- kinetic type ---------- */
+      #typeA {
+        position: absolute;
+        z-index: 8;
+        inset: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-family: var(--font-display);
+        text-align: center;
+        perspective: 900px;
       }
-      #title {
-        color: var(--ink);
-        font-size: 72px;
+      #typeA-veil {
+        position: absolute;
+        inset: 0;
+        background: rgba(7, 10, 17, 0.82);
+        opacity: 0;
+      }
+      #typeA-words {
+        position: relative;
+        padding-bottom: 42px;
+      }
+      #typeA-1 {
+        font-size: 112px;
         font-weight: 600;
-        letter-spacing: -0.03em;
+        letter-spacing: -0.035em;
+        line-height: 1.02;
+      }
+      #typeA-2 {
+        font-size: 196px;
+        font-weight: 600;
+        letter-spacing: -0.045em;
+        line-height: 1;
+        color: var(--accent);
+      }
+      .lt {
+        display: inline-block;
+        transform-origin: 50% 78%;
+        will-change: transform;
+      }
+      .lt.sp {
+        width: 0.26em;
+      }
+
+      /* ---------- the closing statement ---------- */
+      #scrim {
+        position: absolute;
+        z-index: 7;
+        inset: 0;
+        background:
+          radial-gradient(120% 90% at 50% 40%, rgba(10, 15, 24, 0.82), rgba(5, 7, 12, 0.96) 70%),
+          var(--ground);
+        opacity: 0;
+      }
+      #claimA,
+      #claimB {
+        position: absolute;
+        z-index: 8;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 0 160px;
+        perspective: 800px;
+      }
+      #claimA p {
+        font-size: 94px;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        line-height: 1.16;
+      }
+      #claimB {
+        gap: 10px;
+      }
+      #claimB p {
+        font-size: 84px;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        line-height: 1.18;
+        color: var(--ink-2);
+      }
+      .accent {
+        color: var(--accent);
+      }
+      .w {
+        display: inline-block;
+        transform-origin: 50% 80%;
+      }
+
+      /* ---------- the end card ---------- */
+      #end {
+        position: absolute;
+        z-index: 10;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 60px;
+        background: var(--ground);
+        opacity: 0;
+      }
+      #end-glow {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 1100px;
+        height: 700px;
+        margin: -350px 0 0 -550px;
+        background: radial-gradient(
+          50% 50% at 50% 50%,
+          rgba(255, 138, 102, 0.16) 0%,
+          rgba(255, 138, 102, 0) 70%
+        );
+        opacity: 0;
+      }
+      #lockup {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 42px;
+      }
+      #mark {
+        width: 178px;
+        height: 178px;
+      }
+      #mark img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        clip-path: inset(var(--cut, 100%) 0 0 0);
+      }
+      #wordmark {
+        font-size: 118px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        line-height: 1;
+      }
+      #wordmark span {
+        display: inline-block;
+      }
+      #end-url {
+        position: relative;
+        font-family: "Geist Mono", monospace;
+        font-size: 36px;
+        color: var(--ink-3);
+      }
+      #end-meta {
+        position: relative;
+        margin-top: -22px;
+        font-family: "Geist Mono", monospace;
+        font-size: 28px;
+        letter-spacing: 0.02em;
+        color: #6d7890;
+      }
+
+      /* ---------- the cursor ---------- */
+      #cursor {
+        position: absolute;
+        z-index: 9;
+        left: 0;
+        top: 0;
+        width: 44px;
+        height: 44px;
+        filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.55));
+      }
+
+      /* ---------- the hit flash ---------- */
+      #flash {
+        position: absolute;
+        z-index: 20;
+        inset: 0;
+        background: #fff;
+        opacity: 0;
+        pointer-events: none;
       }
     </style>
   </head>
@@ -45,17 +438,323 @@
       id="root"
       data-composition-id="main"
       data-start="0"
-      data-duration="10"
+      data-duration="57"
       data-width="1920"
       data-height="1080"
     >
-      <h1 id="title" class="clip" data-start="0" data-duration="10" data-track-index="0">Title</h1>
+      <div id="camera">
+        <!-- ============ shot 1: the terminal ============ -->
+        <div id="term" class="clip" data-start="0" data-duration="11.4" data-layout-allow-overflow>
+          <div id="term-chrome" data-layout-ignore>
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span id="term-title" data-layout-ignore>ani-cli</span>
+          </div>
+          <div id="term-body">
+            <span class="line"><span class="dim">$ </span><span class="typed" id="typed">ani-cli frieren</span><span class="caret" id="caret-1"></span></span>
+            <span class="line" id="o1"><span class="blue">Checking dependencies...</span></span>
+            <span class="line" id="o2"><span class="blue">hianime.at links fetched</span></span>
+            <span class="line" id="o3">All links:</span>
+            <span class="line" id="o4">1080 &gt;https://hls.dramahot.top/p/scxqicy/55ejtphmn9/79hgjg2p0r/3j9flq65mhgz5x/1080/index.m3u8</span>
+            <span class="line" id="o5">Selected link:</span>
+            <span class="line" id="o6">https://hls.dramahot.top/p/scxqicy/55ejtphmn9/79hgjg2p0r/3j9flq65mhgz5x/1080/index.m3u8</span>
+            <span class="line" id="o7">Subtitles:</span>
+            <span class="line" id="o8">https://hls.dramahot.top/v/scxqicy/55ejtphmn9/79hgjg2p0r/3j9flq65mhgz5x/subs/ys1g7mi8negekmnq.vtt</span>
+            <span class="line" id="prompt2"><span class="dim">$ </span><span class="caret" id="caret-2"></span></span>
+          </div>
+        </div>
+
+        <!-- the accent halo behind the window -->
+        <div id="glow" class="clip" data-start="10.4" data-duration="37.6" data-hold data-layout-allow-occlusion></div>
+
+        <!-- ============ shot 2-5: the app window ============ -->
+        <div id="win" class="clip" data-start="10.4" data-duration="37.6" data-layout-allow-overflow>
+          <img id="plate-home" class="plate" data-start="10.4" data-duration="9.9" src="assets/ui/home.webp" alt="" />
+          <img id="plate-f" class="plate" data-start="20.3" data-duration="0.8" src="assets/ui/search-f.webp" alt="" />
+          <img id="plate-fr" class="plate" data-start="21.1" data-duration="0.5" src="assets/ui/search-fr.webp" alt="" />
+          <img id="plate-fri" class="plate" data-start="21.6" data-duration="0.5" src="assets/ui/search-fri.webp" alt="" />
+          <img id="plate-frie" class="plate" data-start="22.1" data-duration="4.4" src="assets/ui/search-frie.webp" alt="" />
+          <img id="plate-detail" class="plate" data-start="26.5" data-duration="21.5" src="assets/ui/detail.webp" alt="" />
+          <div class="sweep" data-layout-ignore><i id="sweep-1"></i></div>
+          <div class="sweep" data-layout-ignore><i id="sweep-2"></i></div>
+          <div class="sweep" data-layout-ignore><i id="sweep-3"></i></div>
+        </div>
+
+        <!-- the poster that carries the click into the detail view -->
+        <img id="flip" class="clip" data-start="26.5" data-duration="1.0" src="assets/ui/poster-frieren.webp" alt="" />
+
+        <!-- ============ shot 6-7: the player ============ -->
+        <video
+          id="player-video"
+          class="clip"
+          data-start="32"
+          data-duration="8.6"
+          src="assets/ui/player-hd.mp4"
+          poster="assets/ui/player.webp"
+          muted
+          playsinline
+          preload="auto"
+        ></video>
+        <div id="player" class="clip" data-start="32" data-duration="8.6" data-hold data-layout-allow-occlusion></div>
+
+        <!-- ============ shot 8: the claim ============ -->
+        <div id="scrim" class="clip" data-start="39.4" data-duration="8.1" data-hold data-layout-allow-occlusion></div>
+        <div id="claimA" class="clip" data-start="40" data-duration="3.4" data-layout-allow-occlusion>
+          <p><span class="w">ani-cli,</span></p>
+          <p><span class="w">in</span> <span class="w">a</span> <span class="w accent">real</span> <span class="w">window.</span></p>
+        </div>
+        <div id="claimB" class="clip" data-start="43.5" data-duration="3.6" data-layout-allow-occlusion>
+          <p><span class="w">no browser.</span></p>
+          <p><span class="w">no localhost.</span></p>
+          <p><span class="w accent">no server.</span></p>
+        </div>
+
+        <!-- ============ the question, cut over the real app ============ -->
+        <div id="typeA" class="clip" data-start="16" data-duration="3.4" data-hold data-layout-allow-occlusion>
+          <div id="typeA-veil" data-layout-ignore></div>
+          <div id="typeA-words">
+            <p id="typeA-1"><span class="lt">T</span><span class="lt">H</span><span class="lt">E</span><span class="lt sp"> </span><span class="lt">A</span><span class="lt">N</span><span class="lt">I</span><span class="lt">-</span><span class="lt">C</span><span class="lt">L</span><span class="lt">I</span></p>
+            <p id="typeA-2"><span class="lt">G</span><span class="lt">U</span><span class="lt">I</span><span class="lt">?</span></p>
+          </div>
+        </div>
+
+        <!-- ============ shot 9: the end card ============ -->
+        <div id="end" class="clip" data-start="47.5" data-duration="9.5" data-hold>
+          <div id="end-glow"></div>
+          <div id="lockup">
+            <div id="mark"><img src="assets/icon.png" alt="NAMI" /></div>
+            <div id="wordmark"><span>N</span><span>A</span><span>M</span><span>I</span></div>
+          </div>
+          <div id="end-url">github.com/nami-hq/nami</div>
+          <div id="end-meta">windows · fedora · arch</div>
+        </div>
+
+        <!-- ============ the cursor ============ -->
+        <svg id="cursor" class="clip" data-start="19" data-duration="12.9" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M5 2.6 5 19.2 9.1 15.1 11.9 21.4 14.9 20 12.1 13.8 17.9 13.6Z"
+            fill="#ffffff"
+            stroke="#0b0e14"
+            stroke-width="1.3"
+            stroke-linejoin="round"
+          />
+        </svg>
+
+        <div id="flash" class="clip" data-start="0" data-duration="57" data-hold data-layout-allow-occlusion></div>
+      </div>
+
+      <audio id="bed" data-start="0" data-duration="57" src="assets/audio/bed-film.mp3"></audio>
     </div>
+
     <script>
-      const tl = gsap.timeline({ paused: true });
-      // Example: tl.fromTo("#title", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.18, ease: "power4.out" }, 0);
-      window.__timelines["main"] = tl;
-      tl.seek(0);
+      (function () {
+        const tl = gsap.timeline({ paused: true });
+
+        // geometry read off the real app at the trailer's window size
+        const SEARCH = { x: 798.4, y: 342.6 };
+        const CARD = { x: 796.18, y: 620.99, w: 191.58, h: 224.33 };
+        const POSTER = { x: 327.47, y: 167.29, w: 346.91, h: 520.36 };
+        const EP3 = { x: 570.8, y: 930.9 };
+        // the FLIP is a transform move: #flip is authored at the poster rect and
+        // starts translated+scaled onto the grid card.
+        const SX = CARD.w / POSTER.w;
+        const SY = CARD.h / POSTER.h;
+        const TX = CARD.x - SX * POSTER.x;
+        const TY = CARD.y - SY * POSTER.y;
+
+        gsap.set("#camera", { transformOrigin: "0 0" });
+
+        // a hit is a 0 ms set, never an eased tween
+        const hit = (t, strength = 0.15) => {
+          tl.set("#flash", { opacity: strength }, t);
+          tl.to("#flash", { opacity: 0, duration: 0.13, ease: "power2.out" }, t + 0.01);
+        };
+        const glow = (t, peak = 0.9, hold = 0.3, fall = 1, rest = 0.22) => {
+          tl.to("#glow", { opacity: peak, scale: 1, duration: hold, ease: "power3.out" }, t);
+          tl.to("#glow", { opacity: rest, scale: 1.04, duration: fall, ease: "power2.out" }, t + hold);
+        };
+        const sweep = (sel, t, len = 0.85) => {
+          tl.set(sel, { x: 0, opacity: 1 }, t);
+          tl.to(sel, { x: 2450, duration: len, ease: "power2.inOut" }, t);
+          tl.to(sel, { opacity: 0, duration: 0.2, ease: "power1.out" }, t + len - 0.2);
+        };
+
+        // ---- shot 1: the terminal ----
+        gsap.set("#term", { transformPerspective: 1500, rotationY: 7, rotationX: 2, scale: 0.985 });
+        tl.to("#term", { rotationY: 3.2, rotationX: 0.6, duration: 9.6, ease: "sine.inOut" }, 0);
+
+        gsap.set(["#o1", "#o2", "#o3", "#o4", "#o5", "#o6", "#o7", "#o8", "#prompt2"], { opacity: 0 });
+        gsap.set("#typed", { width: "0ch" });
+        tl.to("#typed", { width: "15ch", duration: 0.8, ease: "steps(15)" }, 0.22);
+        tl.set("#caret-1", { opacity: 0 }, 1.04);
+        tl.set("#o1", { opacity: 1 }, 1.16);
+        tl.set("#o2", { opacity: 1 }, 2.2);
+        tl.set(["#o3", "#o4"], { opacity: 1 }, 2.7);
+        tl.set(["#o5", "#o6"], { opacity: 1 }, 3.3);
+        tl.set(["#o7", "#o8"], { opacity: 1 }, 3.9);
+        tl.set("#prompt2", { opacity: 1 }, 4.8);
+        tl.to("#caret-2", { opacity: 0, duration: 0.6, ease: "steps(1)", repeat: 6, yoyo: true }, 4.8);
+
+        // ---- shot 2: the window rises through the terminal ----
+        gsap.set("#win", { transformPerspective: 1600, y: 980, rotationX: 21, rotationY: -9, scale: 0.9 });
+        tl.to("#term", {
+          y: -110,
+          rotationX: 17,
+          rotationY: -6,
+          scale: 0.95,
+          opacity: 0,
+          filter: "blur(7px)",
+          duration: 1.0,
+          ease: "power2.in",
+        }, 10.15);
+        tl.to("#win", { y: 0, rotationX: 0, rotationY: -3, scale: 1, duration: 1.3, ease: "expo.out" }, 10.4);
+        tl.to("#win", { rotationY: 0, duration: 2.8, ease: "sine.inOut" }, 11.8);
+        sweep("#sweep-1", 12.6, 1.1);
+
+        // ---- shot 3: the question, and the hit that answers it ----
+        // the window leans in, then snaps flat on the hit
+        tl.to("#win", { rotationY: 5.5, rotationX: -2.2, scale: 1.022, duration: 0.58, ease: "power2.in" }, 15.36);
+        tl.set("#win", { rotationY: 0, rotationX: 0, scale: 1 }, 16);
+        hit(16, 0.2);
+        glow(16, 0.95, 0.32, 1.5, 0.2);
+
+        gsap.set("#typeA-veil", { opacity: 0 });
+        tl.to("#typeA-veil", { opacity: 1, duration: 0.24, ease: "power2.out" }, 15.98);
+        gsap.set("#typeA .lt", { opacity: 0, y: 42, rotationX: -74, filter: "blur(11px)" });
+        tl.to(
+          "#typeA .lt",
+          { opacity: 1, y: 0, rotationX: 0, filter: "blur(0px)", duration: 0.52, ease: "power4.out", stagger: 0.028 },
+          16.02,
+        );
+        // the question leaves as one clean move
+        tl.to(
+          "#typeA .lt",
+          { opacity: 0, y: -34, rotationX: 58, filter: "blur(9px)", duration: 0.26, ease: "power2.in", stagger: 0.012 },
+          18.66,
+        );
+        tl.to("#typeA-veil", { opacity: 0, duration: 0.3, ease: "power2.inOut" }, 18.68);
+
+        // ---- shot 4: one word, typed into the real field ----
+        gsap.set("#cursor", { x: 2100, y: SEARCH.y, scale: 1 });
+        tl.to("#cursor", { x: SEARCH.x, y: SEARCH.y, duration: 0.8, ease: "power3.out" }, 19.0);
+        tl.to(
+          "#camera",
+          { scale: 1.35, x: SEARCH.x * (1 - 1.35), y: SEARCH.y * (1 - 1.35), duration: 0.42, ease: "power3.inOut" },
+          19.6,
+        );
+        hit(20, 0.13);
+        glow(20, 0.42, 0.2, 0.9, 0.1);
+        tl.to("#camera", { scale: 1, x: 0, y: 0, duration: 1.5, ease: "power2.inOut" }, 22.4);
+
+        // ---- shot 5: travel over the real results grid ----
+        tl.set("#camera", { scale: 1.13, x: -30, y: -6 }, 24);
+        hit(24, 0.15);
+        tl.to("#camera", { x: -120, y: -24, scale: 1.15, duration: 2.5, ease: "power1.inOut" }, 24);
+        tl.to("#win", { rotationY: -5.5, rotationX: 2, scale: 1.012, duration: 2.1, ease: "sine.inOut" }, 24);
+        sweep("#sweep-2", 24.5, 1.0);
+        tl.to("#win", { rotationY: 0, rotationX: 0, scale: 1, duration: 0.34, ease: "power2.out" }, 26.16);
+
+        // ---- shot 6: open the card, the poster becomes the detail view ----
+        tl.to("#cursor", { x: CARD.x + CARD.w / 2, y: CARD.y + CARD.h / 2, duration: 0.6, ease: "power3.out" }, 25.4);
+        tl.set("#camera", { scale: 1, x: 0, y: 0 }, 26.5);
+        hit(26.5, 0.19);
+        glow(26.5, 0.85, 0.3, 1.2, 0.16);
+        tl.to("#cursor", { scale: 0.88, duration: 0.06, ease: "power2.in" }, 26.5);
+        tl.to("#cursor", { scale: 1, duration: 0.16, ease: "back.out(2)" }, 26.56);
+        // the grid hands over to the detail view: out with a blur, in through it
+        tl.to("#plate-frie", { opacity: 0, filter: "blur(8px)", duration: 0.18, ease: "power2.in" }, 26.5);
+        tl.fromTo(
+          "#plate-detail",
+          { opacity: 0, filter: "blur(12px)" },
+          { opacity: 1, filter: "blur(0px)", duration: 0.4, ease: "power3.out" },
+          26.5,
+        );
+        tl.fromTo(
+          "#flip",
+          { x: TX, y: TY, scaleX: SX, scaleY: SY },
+          { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: 0.76, ease: "back.out(1.05)" },
+          26.5,
+        );
+        tl.to("#flip", { opacity: 0, duration: 0.12, ease: "power2.in" }, 27.24);
+        tl.to("#camera", { scale: 1.045, duration: 1.5, ease: "power2.inOut" }, 27.4);
+
+        // ---- shot 7: play ----
+        tl.to("#cursor", { x: EP3.x, y: EP3.y, duration: 1.5, ease: "power3.out" }, 28.6);
+        tl.to("#cursor", { scale: 0.88, duration: 0.06, ease: "power2.in" }, 31.62);
+        tl.to("#cursor", { scale: 1, duration: 0.16, ease: "back.out(2)" }, 31.68);
+        tl.to("#cursor", { opacity: 0, duration: 0.2, ease: "power2.in" }, 31.82);
+        tl.to("#camera", { scale: 1, x: 0, y: 0, duration: 0.34, ease: "power2.out" }, 31.66);
+        // the wipe lives on the camera so the footage and its glass rim read the same var
+        gsap.set("#camera", { "--wipe": "100%" });
+        tl.fromTo(
+          "#camera",
+          { "--wipe": "100%" },
+          { "--wipe": "0%", duration: 0.38, ease: "power3.out" },
+          32,
+        );
+        hit(32, 0.16);
+        glow(32, 0.75, 0.28, 1.2, 0.12);
+
+        // ---- shot 8: the payoff, real playback ----
+        // two pushes that hand off on the hit, so the second bar lifts the speed
+        tl.to("#camera", { scale: 1.05, duration: 3.5, ease: "power1.inOut" }, 32.5);
+        tl.to("#camera", { scale: 1.085, duration: 3.4, ease: "power2.inOut" }, 36.02);
+        hit(36, 0.1);
+        glow(36, 0.4, 0.24, 1.0, 0.1);
+
+        // ---- shot 9: the claim ----
+        tl.to("#camera", { scale: 1, duration: 0.78, ease: "power2.inOut" }, 39.45);
+        tl.fromTo("#scrim", { opacity: 0 }, { opacity: 1, duration: 0.62, ease: "power2.inOut" }, 39.4);
+        hit(40, 0.13);
+        glow(40, 0.6, 0.34, 1.6, 0.1);
+
+        gsap.set("#claimA .w", { opacity: 0, y: 30, rotationX: -58, filter: "blur(9px)" });
+        tl.to(
+          "#claimA .w",
+          { opacity: 1, y: 0, rotationX: 0, filter: "blur(0px)", duration: 0.44, ease: "power4.out", stagger: 0.07 },
+          40.02,
+        );
+        tl.to(
+          "#claimA .w",
+          { opacity: 0, y: -26, filter: "blur(7px)", duration: 0.22, ease: "power2.in", stagger: 0.02 },
+          43.26,
+        );
+
+        gsap.set("#claimB .w", { opacity: 0, y: 34, filter: "blur(10px)" });
+        tl.to(
+          "#claimB .w",
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.4, ease: "power4.out", stagger: 0.1 },
+          43.54,
+        );
+        hit(43.5, 0.15);
+        glow(43.5, 0.7, 0.3, 1.4, 0.12);
+        tl.to(
+          "#claimB .w",
+          { opacity: 0, filter: "blur(8px)", duration: 0.24, ease: "power2.in", stagger: 0.04 },
+          46.86,
+        );
+
+        // ---- shot 10: the end card ----
+        tl.fromTo("#end", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.inOut" }, 47.42);
+        gsap.set("#mark img", { "--cut": "100%" });
+        tl.to("#mark img", { "--cut": "0%", duration: 0.5, ease: "power3.out" }, 47.9);
+        gsap.set("#wordmark span", { opacity: 0, filter: "blur(7px)" });
+        tl.to(
+          "#wordmark span",
+          { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out", stagger: 0.09 },
+          48.66,
+        );
+        gsap.set("#end-url", { opacity: 0, filter: "blur(9px)" });
+        tl.to("#end-url", { opacity: 1, filter: "blur(0px)", duration: 0.22, ease: "power4.out" }, 49.55);
+        gsap.set("#end-meta", { opacity: 0, filter: "blur(7px)" });
+        tl.to("#end-meta", { opacity: 1, filter: "blur(0px)", duration: 0.3, ease: "power3.out" }, 51.5);
+        gsap.set("#end-glow", { opacity: 0, scale: 0.9 });
+        tl.to("#end-glow", { opacity: 1, scale: 1, duration: 0.7, ease: "power2.out" }, 51.5);
+        tl.to("#end-glow", { opacity: 0.55, scale: 1.04, duration: 3.2, ease: "power1.out" }, 52.2);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines["main"] = tl;
+        tl.seek(0);
+      })();
     </script>
   </body>
 </html>

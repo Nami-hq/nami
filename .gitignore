@@ -6,5 +6,6 @@ site/.taste-skill/
 .taste-skill/
 trailer/node_modules/
 trailer/renders/
+trailer/.hyperframes/
 *.log
 packaging/arch/nami-*.tar.gz
