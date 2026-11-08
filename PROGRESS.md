@@ -55,12 +55,16 @@ to a file that exists, and for Linux one that runs on this machine.
 - Real material in the trailer: `assets/ui/*.webp` (2640×1720 renderer captures),
   `assets/ui/player-hd.mp4` (1526×994 @ 15 fps, recorded at the window's own
   size, so the payoff is never upscaled), `assets/anicli.out`, `assets/icon.png`.
+- Trailer rendered and verified: `dist/NAMI-trailer.mp4`, 57.000 s, 1920×1080 at
+  30 fps, 1710 frames, H.264 + AAC 48 kHz stereo, 25.5 MiB. Tail fades to
+  −40 dB, so the film ends instead of chopping. Frames checked at 16.3, 24.5,
+  33, 41, 48 and 52 s.
+- `trailer/` source, assets and `REVIEW.md` pushed to `main` (`127d4dc`).
 
 ## Next
-1. Trailer render + `ffprobe` verification (57.0 s, 1920×1080, 30 fps, audio
-   stream), then a frame look at 16.3 / 24.5 / 33 / 41 / 48 / 52 s.
-2. Commit `trailer/` and push to `main`. Do not push a tag casually:
-   `release.yml` would rebuild and replace the release assets.
+1. Decide whether the trailer ships: upload `dist/NAMI-trailer.mp4` to the
+   `v0.1.0` release and link it from the page, or keep it local. `gh release
+   upload` is safe; pushing a tag is not, `release.yml` rebuilds the assets.
 
 ## Open questions
 - `site/assets` still carries files from the design-taste-frontend skill and the
