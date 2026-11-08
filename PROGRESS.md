@@ -2,49 +2,68 @@
 
 ## Goal
 Ship three things for NAMI (the desktop GUI over `ani-cli`): real downloadable
-packages for Fedora/Arch/Windows, a professional landing page in `site/`, and a
+packages for Windows/Fedora/Arch, a professional landing page in `site/`, and a
 trailer video. Acceptance: every download link on the page resolves to a file
-that exists and, for Linux, one that runs on this machine.
+that exists and, for Linux, one that runs on this machine; the page passes the
+design-taste-frontend gate.
 
 ## Done
 - Desktop app: glass UI, dark + light themes persisted through settings, player
-  glass controls, `nami://` protocol for stream/image proxying.
+  glass controls, `nami://` protocol for stream/image proxying, no local server.
 - `npm test` → 12/12 (media URL builders + playlist rewriting).
-- Theme persistence verified live: `pick dark/light/system` → live + stored +
+- Theme persistence verified live: pick dark/light/system → live + stored +
   after-restart match, no console errors.
 - `DESIGN.md` written (token system, both palettes, always-dark player).
-- Packaging: `electron-builder` 26.18.0 added. `npm run pack:linux` builds
-  `dist/NAMI-0.1.0-x86_64.AppImage` (126 MB). Ran it: the real UI booted at
-  `nami://app/index.html`, 16 trending cards, no console errors.
-- `npm run pack:rpm` (`packaging/rpm/build.sh`, rpmbuild + `packaging/rpm/nami.spec.in`)
-  builds `dist/NAMI-0.1.0-x86_64.rpm` (98 MB). Extracted the payload with
-  `rpm2cpio | cpio` and ran `opt/nami/nami`: UI booted, 16 cards, theme dark,
-  no console errors. `rpm -qip` reports name/version/license/description.
-- `npm run pack:win` builds `dist/NAMI-0.1.0-setup.exe` (122 MB) on this Linux
-  host with no Wine. `7z l` shows a NSIS-3 Unicode installer holding
-  `$PLUGINSDIR/app-64.7z`, which holds `NAMI.exe` (250 MB) and
-  `resources/app.asar` (999111 bytes, the same asar the Linux build ships).
-  It has not been run on Windows.
-- Arch: `packaging/arch/PKGBUILD` + `build-source-tarball.sh` (writes
-  `nami-0.1.0.tar.gz`). Both pass `bash -n`. Not built: `makepkg` is not on this
-  Fedora host.
+- Packaging, all built on this host:
+  - `dist/NAMI-0.1.0-x86_64.AppImage` (120.1 MiB) — booted.
+  - `dist/NAMI-0.1.0-x86_64.rpm` (93.5 MiB) — extracted, payload booted.
+  - `dist/NAMI-0.1.0-setup.exe` (115.9 MiB) — NSIS built without Wine; not run
+    on Windows.
+  - `packaging/arch/PKGBUILD` + `nami-0.1.0.tar.gz` — `bash -n` clean; not built
+    (`makepkg` absent on this Fedora host).
+- Landing page `site/index.html` written end to end (nav-centre, hero, 2×2
+  features, download + player mock + 5 per-platform rows, questions, footer).
+  Phone rhythm 390 = 8 screens; phone trims applied.
+- Landing page gate (`gate.mjs --quick`, 1440 + 390): **1 FAIL** — `tilt` on the
+  hero window, which the brief asked for — and 15 WARNs. All `section-height`,
+  `section-gaps`, `dark-ground` FAILs are cleared and probe-verified.
+- `nami/` is a git repo on `main`; commit `d13b03b` holds app + packaging + page.
 
 ## Next
-1. Packaging: install `electron-builder`, add build config, produce a Linux
-   AppImage and RPM, run the AppImage to prove it launches.
-2. Windows: NSIS build on this machine if Wine works; otherwise a GitHub Actions
-   workflow. Do not claim a Windows file that does not exist.
-3. Landing page in `nami/site/` via the design-taste-frontend skill; downloads
-   section lists only artifacts that exist.
-4. Trailer video.
+1. Trailer video for NAMI. Not started.
+2. User decisions: repo owner/name slug, go-ahead to push, and how to close the
+   page's build in the gate (`--done` with their words, or drop the 3D tilt).
+   Real download URLs, the PKGBUILD `source` and the Windows CI need the push.
 
 ## Open questions
-- Publish to a public GitHub repo? Needs the user's OK; `nami/` is not a git repo.
-- Android: needs a separate mobile project. Not shipped as a fake download.
+- Publish to a public GitHub repo? `nami-inc/nami` is what the files say today;
+  the user said "Nami.co or inc or smt like that" — the exact slug is unconfirmed
+  and the org does not exist yet.
+- `site/assets/` carries the taste-skill's whole library (39 MiB); the page
+  references ~23 files. Publishing redistributes third-party code and dead
+  weight. Not resolved.
+- Android: needs a separate mobile project. The page says "Not yet".
 
 ## Key facts
-- `chrome` is not in PATH. Design-skill scripts need `CHROME_PATH`:
-  `~/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`.
-- `rpmbuild`, `fakeroot`, `ar` present. `appimagetool` absent (electron-builder
-  fetches its own).
-- Host: Nobara 44 (Fedora-family), x86_64, nn.
+- Measured page FAILs that remain: `tilt` at 1440 only (accepted: the brief asked
+  for a tilting 3D hero window). `scroll-reveal` FAILs appear only in a non-quick
+  gate round; `--quick` skips motion checks. Both are user-accepted.
+- Remaining WARNs (15), by check: `nav-labels` ~8, `no-visual` 2,
+  `text-contrast` 2, `section-gaps` 1, `copy-length` 1, `action-repeat` 1,
+  `cta` 1, `visual-caption` 1.
+- `#features` at 1440 sits exactly at its T-fit limit (content bottom =
+  section bottom − padb), so adding any content to it breaks `section-height`.
+- CSS rule that matters: the checker's first-screen-group budget applies only to
+  `.g2` sections (`isG2` in consistency.mjs ~2342).
+- Ground tokens: `--ground-bg: #93c2ee` etc. (index.html ~40 and ~54). Do not go
+  lighter than `#a0cef2` — OKLab chroma crosses 0.07 and `paletteKind` flips to
+  `light`, which breaks `dark-ground`.
+- Design-skill scripts need
+  `CHROME_PATH=~/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome`;
+  one headless Chrome at a time. Gate: `.taste-skill/build.json` is armed.
+- Probes (in `/tmp/opencode`): `measure.mjs` (CDP + `--probe`), `probe-checker.js`
+  (per-section g1/g2 boxes), `extent.js` (content extents + gaps),
+  `grounds.mjs` (dark-ground ratios), `shot-section.mjs` (section screenshot).
+- `appimagetool` and `makepkg` are absent here; `rpmbuild`, `fakeroot`, `ar`,
+  `inkscape`, `7z` are present. Host: Nobara 44 (Fedora-family), x86_64.
+- Runtime deps not bundled: `ani-cli` (`server/scrape.js:367`) and `yt-dlp`.
