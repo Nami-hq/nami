@@ -9,12 +9,17 @@ out="$root/packaging/arch/nami-$version.tar.gz"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# Archive outside the source tree, so the growing tarball is never read back.
+# Archive outside the source tree, and never read the tarball this script writes
+# back in: the output lives in the source tree, so tar would grow it on every run.
 tar czf "$work/nami-$version.tar.gz" -C "$(dirname "$root")" \
   --transform "s|^$(basename "$root")|nami-$version|" \
   --exclude='node_modules' \
   --exclude='dist' \
+  --exclude='.git' \
   --exclude='.taste-skill' \
+  --exclude='.shots' \
+  --exclude="nami-$version.tar.gz" \
+  --exclude='PKGBUILD' \
   --exclude='*.log' \
   "$(basename "$root")"
 

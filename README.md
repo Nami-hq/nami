@@ -18,6 +18,9 @@ On Linux the AppImage also needs the usual Chromium runtime libraries (`gtk3`, `
 
 ## Download
 
+Grab the files from the [latest release](https://github.com/qusai64574-gif/nami/releases/latest), or read the
+[landing page](https://qusai64574-gif.github.io/nami/).
+
 | Platform | Artifact |
 | --- | --- |
 | Windows 10/11 (64-bit) | `NAMI-0.1.0-setup.exe` |

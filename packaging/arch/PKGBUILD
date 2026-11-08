@@ -1,26 +1,23 @@
 # Maintainer: NAMI <nami@example.com>
-# Builds from the source tarball shipped beside this file:
-#   packaging/arch/build-source-tarball.sh   (run once in the project root)
-#
-# Once the repository is public and a release is cut, swap the local source for
-# the release tarball and fill in its real hash:
-#   source=("$pkgname-$pkgver.tar.gz::https://github.com/nami-inc/nami/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
-#   sha256sums=('<sha256 of that tarball>')
-# The local source below keeps makepkg working before that release exists.
+# The source tarball is the release asset beside this file:
+#   https://github.com/qusai64574-gif/nami/releases/download/v0.1.0/nami-0.1.0.tar.gz
+# Rebuild it with packaging/arch/build-source-tarball.sh after any source change,
+# then update sha256sums below. The tarball excludes the PKGBUILD itself, so this
+# file and its hash do not depend on each other.
 
 pkgname=nami
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="A glass anime player for ani-cli"
 arch=('x86_64')
-url="https://github.com/nami-inc/nami"
+url="https://github.com/qusai64574-gif/nami"
 license=('MIT')
 depends=('ani-cli' 'yt-dlp' 'gtk3' 'nss' 'alsa-lib' 'libnotify' 'xdg-utils' 'at-spi2-core')
 makedepends=('nodejs' 'npm')
 options=('!strip' '!debug')
 
-source=("$pkgname-$pkgver.tar.gz")
-sha256sums=('SKIP')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/qusai64574-gif/nami/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('5356a3573dee8fac853c64f656ed0862c36ae7c45e1d1b09a0101bf45a0873fe')
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
