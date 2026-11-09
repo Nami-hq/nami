@@ -1,4 +1,5 @@
 import { api, imageUrl, ApiError } from './api.js';
+import { isLocked } from './gate-view.js';
 import {
   escapeHtml,
   icon,
@@ -46,6 +47,7 @@ const state = {
   results: null,
   detail: null,
   version: '',
+  gate: { filter: true, unlocked: false },
 };
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -79,6 +81,10 @@ let settingsView = null;
 let settingsDirty = false;
 let ambient = { url: '', index: 0 };
 
+// The gate UI replaces this with the unlock dialog; a toast until it exists.
+let onLockedCard = () =>
+  toast('Adult titles are locked. Set an access code in Settings, then unlock.', { type: 'info' });
+
 /* ----------------------------- boot ----------------------------------- */
 
 async function boot() {
@@ -90,6 +96,7 @@ async function boot() {
     state.history = Array.isArray(data.history) ? data.history : [];
     state.trending = Array.isArray(data.trending) ? data.trending : [];
     state.version = data.version || '';
+    if (data.gate) state.gate = data.gate;
     renderDiscoverHome();
     setAmbient(state.trending[0]?.poster || '');
     if (settingsView) buildSettings();
@@ -161,6 +168,10 @@ function bindChrome() {
   });
 
   refs.discoverBody.addEventListener('click', (event) => {
+    if (event.target.closest('[data-locked]')) {
+      onLockedCard();
+      return;
+    }
     const button = event.target.closest('[data-slug]');
     if (!button) return;
     const play =
@@ -352,7 +363,10 @@ function buildShelf({ title, note, items, ranked = false, resumable = false }) {
           episodes: 0,
         }
       : item;
-    const card = posterCard(cardItem, { rank: ranked ? item.rank || index + 1 : 0 });
+    const card = posterCard(cardItem, {
+      rank: ranked ? item.rank || index + 1 : 0,
+      locked: isLocked(item, state.gate),
+    });
     if (resumable) {
       const button = card.querySelector('button');
       button.dataset.resumeEp = item.ep;
@@ -421,7 +435,7 @@ function renderResults(query, items) {
       <div class="poster-grid"></div>
     </section>`;
   const grid = refs.discoverBody.querySelector('.poster-grid');
-  items.forEach((item) => grid.append(posterCard(item)));
+  items.forEach((item) => grid.append(posterCard(item, { locked: isLocked(item, state.gate) })));
 }
 
 function renderNoResults(query) {
@@ -482,6 +496,7 @@ function renderHistory() {
 
   for (const entry of state.history) {
     const poster = imageUrl(entry.poster);
+    const locked = isLocked(entry, state.gate);
     const pct = entry.duration > 0 ? Math.min(99, Math.round((entry.position / entry.duration) * 100)) : 0;
     const meta = [
       entry.mode === 'dub' ? 'Dub' : 'Sub',
@@ -493,25 +508,38 @@ function renderHistory() {
       .join(' · ');
 
     const article = document.createElement('article');
-    article.className = 'history-card';
+    article.className = `history-card${locked ? ' history-card--locked' : ''}`;
+    const mainButton = locked
+      ? `<button class="history-card__main" type="button" data-locked="${escapeHtml(entry.title)}"
+          aria-label="${escapeHtml(entry.title)} is 21+ and locked">
+          <span class="history-card__art history-card__art--locked">
+            ${poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''}
+            <span class="poster-card__lock">${icon('lock')}<span>21+</span></span>
+          </span>
+          <span class="history-card__text">
+            <span class="history-card__title">${escapeHtml(entry.title)}</span>
+            <span class="history-card__meta">Locked · 21+</span>
+          </span>
+        </button>`
+      : `<button class="history-card__main" type="button" data-history-resume
+          data-slug="${escapeHtml(entry.slug)}" data-title="${escapeHtml(entry.title)}"
+          data-poster="${escapeHtml(entry.poster)}" data-ep="${escapeHtml(entry.ep)}"
+          data-mode="${entry.mode}" data-position="${Number(entry.position) || 0}">
+          <span class="history-card__art">
+            ${poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''}
+          </span>
+          <span class="history-card__text">
+            <span class="history-card__title">${escapeHtml(entry.title)}</span>
+            <span class="history-card__meta">${escapeHtml(meta)}</span>
+            ${
+              pct
+                ? `<span class="history-card__progress"><i style="width:${pct}%"></i></span>`
+                : ''
+            }
+          </span>
+        </button>`;
     article.innerHTML = `
-      <button class="history-card__main" type="button" data-history-resume
-        data-slug="${escapeHtml(entry.slug)}" data-title="${escapeHtml(entry.title)}"
-        data-poster="${escapeHtml(entry.poster)}" data-ep="${escapeHtml(entry.ep)}"
-        data-mode="${entry.mode}" data-position="${Number(entry.position) || 0}">
-        <span class="history-card__art">
-          ${poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''}
-        </span>
-        <span class="history-card__text">
-          <span class="history-card__title">${escapeHtml(entry.title)}</span>
-          <span class="history-card__meta">${escapeHtml(meta)}</span>
-          ${
-            pct
-              ? `<span class="history-card__progress"><i style="width:${pct}%"></i></span>`
-              : ''
-          }
-        </span>
-      </button>
+      ${mainButton}
       <button class="icon-button history-card__remove" type="button" data-history-remove
         data-slug="${escapeHtml(entry.slug)}" data-mode="${entry.mode}"
         data-title="${escapeHtml(entry.title)}" aria-label="Remove ${escapeHtml(
@@ -532,6 +560,10 @@ function renderHistory() {
 }
 
 async function onHistoryClick(event) {
+  if (event.target.closest('[data-locked]')) {
+    onLockedCard();
+    return;
+  }
   const remove = event.target.closest('[data-history-remove]');
   if (remove) {
     const { slug, mode, title } = remove.dataset;

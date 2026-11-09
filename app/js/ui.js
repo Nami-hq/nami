@@ -1,4 +1,5 @@
 import { imageUrl } from './api.js';
+import { lockLabel } from './gate-view.js';
 
 export function escapeHtml(value) {
   return String(value ?? '')
@@ -71,11 +72,32 @@ function metaParts(item) {
   return [item.type, item.episodes ? `${item.episodes} eps` : '', item.duration].filter(Boolean);
 }
 
-export function posterCard(item, { rank = 0 } = {}) {
+export function posterCard(item, { rank = 0, locked = false } = {}) {
   const li = document.createElement('li');
-  li.className = 'poster-card';
+  li.className = `poster-card${locked ? ' poster-card--locked' : ''}`;
   const parts = metaParts(item);
   const poster = imageUrl(item.poster);
+
+  if (locked) {
+    li.innerHTML = `
+      <button class="poster-card__button" type="button" data-locked="${escapeHtml(
+        item.title
+      )}" aria-label="${escapeHtml(item.title)} is 21+ and locked">
+        <span class="poster-card__art">
+          <span class="poster-card__blur">${
+            poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''
+          }</span>
+          <span class="poster-card__lock">${icon('lock')}<span>${lockLabel()}</span></span>
+        </span>
+        <span class="poster-card__body">
+          <span class="poster-card__title">${escapeHtml(item.title)}</span>
+          <span class="poster-card__meta"><span>Locked</span></span>
+        </span>
+      </button>`;
+    bindImages(li);
+    return li;
+  }
+
   li.innerHTML = `
     <button class="poster-card__button" type="button" data-slug="${escapeHtml(item.slug)}" data-title="${escapeHtml(item.title)}" data-poster="${escapeHtml(item.poster || '')}">
       <span class="poster-card__art">
