@@ -4,6 +4,7 @@ import {
   shouldOfferSkipIntro,
   nextIntroEnd,
   learnIntroSkips,
+  shouldOfferNext,
 } from './playback-rules.js';
 
 const IDLE_DELAY = 2800;
@@ -45,6 +46,7 @@ export class Player {
     this.learned = null;
     this.introEvidence = null;
     this.skipOffered = false;
+    this.upnextDismissed = false;
   }
 
   /* ------------------------------ build -------------------------------- */
@@ -251,6 +253,7 @@ export class Player {
     video.addEventListener('timeupdate', () => {
       this.updateScrub();
       this.updateSkipIntro();
+      this.updateUpNextPrompt();
       this.save();
     });
     video.addEventListener('progress', () => this.updateBuffer());
@@ -266,7 +269,10 @@ export class Player {
     this.bindScrub();
     this.bindVolume();
     this.els.upnextPlay.addEventListener('click', () => this.playNextEpisode());
-    this.els.upnextDismiss.addEventListener('click', () => this.hideUpNext());
+    this.els.upnextDismiss.addEventListener('click', () => {
+      this.upnextDismissed = true;
+      this.hideUpNext();
+    });
     this.host.querySelector('[data-error-retry]')?.addEventListener('click', () => this.retry());
     this.host.querySelector('[data-error-back]')?.addEventListener('click', () => this.close());
 
@@ -399,6 +405,7 @@ export class Player {
     this.learned = null;
     this.introEvidence = null;
     this.setSkipOffered(false);
+    this.upnextDismissed = false;
     this.hideError();
     this.hideUpNext();
     this.closeMenus();
@@ -1159,14 +1166,40 @@ export class Player {
     this.save(true);
     this.root.classList.remove('is-idle');
     this.syncPlayState();
+    this.setSkipOffered(false);
+    if (this.upnextDismissed) return;
     const next = this.prepareNextEpisode();
     if (!next) return;
     this.nextEpisode = next;
-    this.showUpNext(next);
+    this.showUpNext(next, true);
   }
 
-  showUpNext(next) {
-    this.countdownLeft = this.settings.autoplay ? AUTOPLAY_DELAY : 0;
+  // The card appears once the outro starts, not only when the file ends.
+  updateUpNextPrompt() {
+    if (!this.els?.upnext || this.video.ended) return;
+    if (this.upnextDismissed) return;
+
+    const open = this.els.upnext.classList.contains('is-open');
+    if (open) return;
+
+    const next = this.prepareNextEpisode();
+    if (!next) return;
+
+    const offer = shouldOfferNext({
+      currentTime: this.video.currentTime || 0,
+      duration: Number(this.video.duration),
+      settings: this.settings,
+      playing: !this.video.paused,
+    });
+    if (!offer) return;
+
+    this.nextEpisode = next;
+    this.showUpNext(next, false);
+  }
+
+  showUpNext(next, startCountdown = false) {
+    this.countdownLeft =
+      startCountdown && this.settings.autoplay ? AUTOPLAY_DELAY : 0;
     this.els.upnextTitle.textContent = next ? `${this.context.title} · Episode ${next.number}` : '';
     this.els.upnextMeta.textContent = '';
 
