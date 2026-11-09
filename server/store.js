@@ -30,6 +30,7 @@ const defaultSettings = {
   useAniSkip: true,
   adultFilter: true,
   runtimeInstalled: false,
+  runtimePrompted: false,
 };
 
 function ensureDir(dir) {

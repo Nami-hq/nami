@@ -48,6 +48,7 @@ const state = {
   detail: null,
   version: '',
   gate: { filter: true, unlocked: false },
+  runtime: { ready: false, aniCli: null, ytDlp: null, dir: '', needsBash: false },
 };
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -97,9 +98,11 @@ async function boot() {
     state.trending = Array.isArray(data.trending) ? data.trending : [];
     state.version = data.version || '';
     if (data.gate) state.gate = data.gate;
+    if (data.runtime) state.runtime = data.runtime;
     renderDiscoverHome();
     setAmbient(state.trending[0]?.poster || '');
     if (settingsView) buildSettings();
+    maybeOpenSetup();
   } catch (error) {
     refs.discoverBody.replaceChildren(
       emptyState({
@@ -1036,6 +1039,53 @@ function buildSettings() {
         </section>
 
         <section class="setting-group glass">
+          <h2 class="setting-group__title">Player tools</h2>
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">ani-cli</span>
+              <span class="setting-row__desc">${escapeHtml(
+                state.runtime.aniCli || 'Not found. NAMI still streams; the fallback is off.'
+              )}</span>
+            </span>
+            <span class="setting-row__control">
+              <span class="pill">${state.runtime.aniCli ? 'Ready' : 'Missing'}</span>
+            </span>
+          </div>
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">yt-dlp</span>
+              <span class="setting-row__desc">${escapeHtml(
+                state.runtime.ytDlp || 'Not found. Needed for the ani-cli fallback.'
+              )}</span>
+            </span>
+            <span class="setting-row__control">
+              <span class="pill">${state.runtime.ytDlp ? 'Ready' : 'Missing'}</span>
+            </span>
+          </div>
+          ${
+            state.runtime.needsBash
+              ? `<div class="setting-row">
+                   <span class="setting-row__label">
+                     <span class="setting-row__name">Git Bash</span>
+                     <span class="setting-row__desc">ani-cli is a shell script. Install Git for Windows, then run setup again.</span>
+                   </span>
+                 </div>`
+              : ''
+          }
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">Reinstall</span>
+              <span class="setting-row__desc">${escapeHtml(
+                state.runtime.dir || 'The app keeps its own copies, separate from your system.'
+              )}</span>
+            </span>
+            <span class="setting-row__control">
+              <button class="button button--ghost" type="button" data-runtime-install>Reinstall</button>
+            </span>
+          </div>
+        </section>
+
+        <section class="setting-group glass">
           <h2 class="setting-group__title">Content</h2>
           <div class="setting-row">
             <span class="setting-row__label">
@@ -1096,7 +1146,172 @@ function refreshSettingsControls() {
   if (quality) quality.value = state.settings.quality;
 }
 
+/* ----------------------------- setup ---------------------------------- */
+
+// First run: NAMI fetches its own ani-cli and yt-dlp so nobody touches a
+// terminal. Streaming works without them; they power the fallback path.
+function maybeOpenSetup() {
+  if (state.runtime?.ready) return;
+  if (state.settings.runtimePrompted) return;
+  openSetup();
+}
+
+function setupStepHtml(key, label) {
+  return `
+    <li class="setup__step" data-setup-step="${key}">
+      <span class="setup__dot"></span>
+      <span class="setup__step-text">
+        <span class="setup__step-name">${label}</span>
+        <span class="setup__step-path" data-setup-path="${key}">Waiting</span>
+      </span>
+    </li>`;
+}
+
+function openSetup() {
+  const root = document.getElementById('dialog-root');
+  if (!root || root.querySelector('.setup')) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const previous = document.activeElement;
+    const layer = document.createElement('div');
+    layer.className = 'dialog-layer';
+    layer.innerHTML = `
+      <div class="dialog setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+        <span class="dialog__mark">${icon('wave')}</span>
+        <h2 class="dialog__title" id="setup-title">Set up the player</h2>
+        <p class="dialog__text">
+          NAMI can download ani-cli and yt-dlp into its own folder. No terminal, no package manager.
+        </p>
+        <ul class="setup__steps">
+          ${setupStepHtml('ani-cli', 'ani-cli')}
+          ${setupStepHtml('yt-dlp', 'yt-dlp')}
+        </ul>
+        <p class="setup__note" data-setup-note>
+          Streaming works without them. They power the fallback when a site changes.
+        </p>
+        <div class="dialog__actions">
+          <button class="button button--ghost" type="button" data-setup="later">Later</button>
+          <button class="button button--primary" type="button" data-setup="install">Install</button>
+        </div>
+      </div>`;
+
+    const note = layer.querySelector('[data-setup-note]');
+    const installButton = layer.querySelector('[data-setup="install"]');
+    const laterButton = layer.querySelector('[data-setup="later"]');
+    let settled = false;
+    let unsubscribe = null;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe?.();
+      layer.remove();
+      document.removeEventListener('keydown', onKey, true);
+      if (previous && typeof previous.focus === 'function') previous.focus();
+      resolve(value);
+    };
+
+    const onKey = (event) => {
+      if (event.key === 'Escape' && !settled) {
+        event.preventDefault();
+        state.settings.runtimePrompted = true;
+        api.saveSettings({ runtimePrompted: true }).catch(() => {});
+        finish(null);
+      }
+    };
+
+    const setStep = (key, stateName, path) => {
+      const row = layer.querySelector(`[data-setup-step="${key}"]`);
+      if (!row) return;
+      row.classList.toggle('is-done', stateName === 'done');
+      row.classList.toggle('is-busy', stateName === 'start');
+      const target = layer.querySelector(`[data-setup-path="${key}"]`);
+      if (target && path) target.textContent = path;
+      else if (target && stateName === 'start') target.textContent = 'Downloading…';
+    };
+
+    const setBusy = (busy) => {
+      installButton.disabled = busy;
+      laterButton.disabled = busy;
+      installButton.textContent = busy ? 'Installing…' : 'Retry';
+    };
+
+    installButton.addEventListener('click', async () => {
+      setBusy(true);
+      note.textContent = 'Downloading into ' + (state.runtime.dir || 'the app folder');
+      unsubscribe?.();
+      unsubscribe = window.nami?.runtime?.onProgress?.((progress) => {
+        if (progress?.step) setStep(progress.step, progress.state, progress.path);
+      });
+      try {
+        const status = await api.runtimeInstall();
+        state.runtime = status;
+        state.settings.runtimeInstalled = Boolean(status.ready);
+        if (status.problems?.length) {
+          note.textContent = status.problems.map((p) => p.message).join(' ');
+          setBusy(false);
+          return;
+        }
+        setStep('ani-cli', status.aniCli ? 'done' : 'start', status.aniCli);
+        setStep('yt-dlp', status.ytDlp ? 'done' : 'start', status.ytDlp);
+        if (status.ready) {
+          note.textContent = 'Ready. NAMI will use these from now on.';
+          toast('Player tools ready', { type: 'success' });
+          setTimeout(() => finish(status), 700);
+        } else {
+          note.textContent = 'The downloads did not finish. Check the connection and retry.';
+          setBusy(false);
+        }
+      } catch (error) {
+        note.textContent = error.message;
+        setBusy(false);
+      }
+    });
+
+    laterButton.addEventListener('click', () => {
+      state.settings.runtimePrompted = true;
+      api.saveSettings({ runtimePrompted: true }).catch(() => {});
+      finish(null);
+    });
+
+    layer.addEventListener('pointerdown', (event) => {
+      if (event.target === layer && !installButton.disabled) {
+        state.settings.runtimePrompted = true;
+        api.saveSettings({ runtimePrompted: true }).catch(() => {});
+        finish(null);
+      }
+    });
+
+    document.addEventListener('keydown', onKey, true);
+    root.append(layer);
+    installButton.focus();
+  });
+}
+
 function onSettingsClick(event) {
+  const runtimeButton = event.target.closest('[data-runtime-install]');
+  if (runtimeButton) {
+    runtimeButton.disabled = true;
+    runtimeButton.textContent = 'Installing…';
+    api
+      .runtimeInstall()
+      .then((status) => {
+        state.runtime = status;
+        state.settings.runtimeInstalled = Boolean(status.ready);
+        if (status.ready) toast('Player tools ready', { type: 'success' });
+        else {
+          toast(status.problems?.[0]?.message || 'Setup needs another try', { type: 'error' });
+        }
+        buildSettings();
+      })
+      .catch((error) => {
+        runtimeButton.disabled = false;
+        runtimeButton.textContent = 'Reinstall';
+        toast(error.message, { type: 'error' });
+      });
+    return;
+  }
+
   const toggle = event.target.closest('[data-toggle]');
   if (toggle) {
     const key = toggle.dataset.toggle;

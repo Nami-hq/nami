@@ -3266,6 +3266,102 @@ a {
   color: var(--ink-2);
 }
 
+.dialog__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 16px;
+  border-radius: 18px;
+  color: #fff;
+  background: linear-gradient(160deg, rgba(11, 124, 245, 0.92), rgba(9, 96, 198, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 16px 34px -16px rgba(11, 124, 245, 0.72);
+}
+
+.dialog__mark .icon {
+  width: 24px;
+  height: 24px;
+}
+
+.setup__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 20px;
+  padding: 6px 4px;
+  list-style: none;
+  border-radius: 16px;
+  background: rgba(var(--hi-rgb), calc(0.34 * var(--hi-a)));
+  border: 1px solid rgba(var(--hi-rgb), calc(0.56 * var(--hi-a)));
+}
+
+.setup__step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.setup__dot {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(var(--hi-rgb), calc(0.2 * var(--hi-a)));
+  box-shadow: inset 0 0 0 1px rgba(var(--hi-rgb), calc(0.5 * var(--hi-a)));
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.setup__step.is-busy .setup__dot {
+  background: rgba(11, 124, 245, 0.9);
+  box-shadow: 0 0 0 4px rgba(11, 124, 245, 0.18);
+  animation: setup-pulse 1.1s ease-in-out infinite;
+}
+
+.setup__step.is-done .setup__dot {
+  background: #34c759;
+  box-shadow: 0 0 0 4px rgba(52, 199, 89, 0.16);
+}
+
+@keyframes setup-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.setup__step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setup__step-name {
+  font: 600 12.5px/1.2 "Geist", system-ui, sans-serif;
+  color: var(--ink);
+}
+
+.setup__step-path {
+  font: 400 11.5px/1.3 "Geist Mono", ui-monospace, monospace;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup__note {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
 .dialog__actions {
   display: flex;
   justify-content: flex-end;

@@ -14,8 +14,8 @@ const stateDir = process.env.NAMI_STATE_DIR || path.join(stateRoot, 'nami');
 const binRoot = process.env.NAMI_BIN_DIR || path.join(stateDir, 'bin');
 
 const ANI_CLI_URLS = [
-  'https://raw.githubusercontent.com/ani-cli/ani-cli/master/ani-cli',
   'https://raw.githubusercontent.com/pystardust/ani-cli/master/ani-cli',
+  'https://raw.githubusercontent.com/ani-cli/ani-cli/master/ani-cli',
 ];
 
 const YT_DLP_URLS = {
