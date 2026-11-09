@@ -1,5 +1,12 @@
 import { api, streamUrl, imageUrl } from './api.js';
 import { escapeHtml, icon, formatTime, bindImages } from './ui.js';
+import {
+  shouldOfferSkipIntro,
+  nextIntroEnd,
+  learnIntroSkips,
+  shouldOfferNext,
+  pickLearnedMark,
+} from './playback-rules.js';
 
 const IDLE_DELAY = 2800;
 const SAVE_INTERVAL = 5000;
@@ -36,6 +43,12 @@ export class Player {
     this.lastVolume = settings.muted ? 0 : Number(settings.volume) || 1;
     this.networkRetried = false;
     this.dragging = false;
+    this.unsubscribeSkipTimes = null;
+    this.introSkip = null;
+    this.learned = null;
+    this.introEvidence = null;
+    this.skipOffered = false;
+    this.upnextDismissed = false;
   }
 
   /* ------------------------------ build -------------------------------- */
@@ -55,6 +68,10 @@ export class Player {
           <video class="player__video" playsinline preload="metadata"></video>
           <div class="player__flash"><span class="player__flash-icon">${icon('pause')}</span></div>
           <div class="player__buffer"><span class="spinner"></span></div>
+          <button class="player__skip" type="button" data-action="skip-intro" aria-hidden="true" tabindex="-1">
+            <span class="player__skip-label">Skip intro</span>
+            ${icon('next')}
+          </button>
         </div>
 
         <div class="player__chrome">
@@ -175,6 +192,7 @@ export class Player {
       scrub: q('.scrub'),
       fill: q('[data-fill]'),
       buffer: q('[data-buffer]'),
+      skipIntro: q('[data-action="skip-intro"]'),
       thumb: q('[data-thumb]'),
       tip: q('[data-tip]'),
       play: q('[data-action="toggle"]'),
@@ -229,6 +247,8 @@ export class Player {
     document.addEventListener('click', this.onDocClick);
     document.addEventListener('keydown', this.onKey);
     this.els.stage.addEventListener('click', this.onBillboard);
+    this.unsubscribeSkipTimes =
+      window.nami?.skipTimes?.onReady?.((message) => this.applySkipTimes(message)) || null;
 
     video.addEventListener('play', () => this.syncPlayState());
     video.addEventListener('pause', () => this.syncPlayState());
@@ -237,6 +257,8 @@ export class Player {
     video.addEventListener('canplay', () => this.root.classList.remove('is-buffering'));
     video.addEventListener('timeupdate', () => {
       this.updateScrub();
+      this.updateSkipIntro();
+      this.updateUpNextPrompt();
       this.save();
     });
     video.addEventListener('progress', () => this.updateBuffer());
@@ -252,7 +274,10 @@ export class Player {
     this.bindScrub();
     this.bindVolume();
     this.els.upnextPlay.addEventListener('click', () => this.playNextEpisode());
-    this.els.upnextDismiss.addEventListener('click', () => this.hideUpNext());
+    this.els.upnextDismiss.addEventListener('click', () => {
+      this.upnextDismissed = true;
+      this.hideUpNext();
+    });
     this.host.querySelector('[data-error-retry]')?.addEventListener('click', () => this.retry());
     this.host.querySelector('[data-error-back]')?.addEventListener('click', () => this.close());
 
@@ -278,6 +303,9 @@ export class Player {
           break;
         case 'next':
           this.stepEpisode(1);
+          break;
+        case 'skip-intro':
+          this.skipIntro();
           break;
         case 'mute':
           this.toggleMute();
@@ -378,6 +406,11 @@ export class Player {
     this.lastSaved = 0;
     this.networkRetried = false;
     this.data = null;
+    this.introSkip = null;
+    this.learned = null;
+    this.introEvidence = null;
+    this.setSkipOffered(false);
+    this.upnextDismissed = false;
     this.hideError();
     this.hideUpNext();
     this.closeMenus();
@@ -409,6 +442,7 @@ export class Player {
       this.setupSubtitles(data.subtitles || []);
       this.updateHeading();
       this.attach(data.masterUrl, data.referer);
+      this.loadIntro();
     } catch (error) {
       if (this.destroyed) return;
       this.root.classList.remove('is-buffering');
@@ -972,6 +1006,7 @@ export class Player {
       clearTimeout(this.idleTimer);
       this.save();
     }
+    this.updateSkipIntro();
   }
 
   scheduleIdle() {
@@ -1036,6 +1071,111 @@ export class Player {
     }
   }
 
+  /* ------------------------------ intro ---------------------------------- */
+
+  // Marks come from AniSkip when it knows the title; otherwise the local
+  // window (settings plus whatever we learned here) carries it.
+  async loadIntro() {
+    const slug = this.context.slug;
+    const ep = this.ep;
+    if (!slug) return;
+    try {
+      const result = await api.skipTimes({ title: this.context.title, slug, ep });
+      if (this.destroyed || this.ep !== ep) return;
+      // A pending answer leaves the mark alone, so a mark pushed for this
+      // episode is not cleared by the reply to this same lookup.
+      if (result?.skip) this.introSkip = result.skip;
+      else if (!result?.pending) this.introSkip = null;
+      this.learned = pickLearnedMark(this.learned, result?.learned || null);
+      this.introEvidence = this.effectiveIntro();
+      this.updateSkipIntro();
+    } catch {
+      // Offline or the service is down. The local window still works, and a
+      // late answer for an episode we already left must not touch this one.
+      if (this.destroyed || this.ep !== ep) return;
+      this.introSkip = null;
+      this.introEvidence = this.learned || null;
+      this.updateSkipIntro();
+    }
+  }
+
+  /** AniSkip answers after the first frames; apply it only to its own episode. */
+  applySkipTimes(message) {
+    if (!message || this.destroyed) return;
+    if (String(message.slug) !== String(this.context.slug)) return;
+    if (String(message.ep) !== String(this.ep)) return;
+    if (message.skip) this.introSkip = message.skip;
+    this.introEvidence = this.effectiveIntro();
+    this.updateSkipIntro();
+  }
+
+  effectiveIntro() {
+    const op = this.introSkip?.op;
+    if (op && Number.isFinite(op.start) && Number.isFinite(op.end)) {
+      return { start: op.start, end: op.end };
+    }
+    return this.learned || null;
+  }
+
+  setSkipOffered(offered) {
+    if (this.skipOffered === offered) return;
+    this.skipOffered = offered;
+    const button = this.els?.skipIntro;
+    if (!button) return;
+    button.classList.toggle('is-on', offered);
+    button.setAttribute('aria-hidden', String(!offered));
+    button.tabIndex = offered ? 0 : -1;
+  }
+
+  updateSkipIntro() {
+    if (!this.els?.skipIntro) return;
+    const offered = shouldOfferSkipIntro({
+      currentTime: this.video.currentTime || 0,
+      duration: Number(this.video.duration),
+      settings: this.settings,
+      learned: this.introEvidence,
+      playing: !this.video.paused && !this.video.ended,
+    });
+    this.setSkipOffered(offered);
+  }
+
+  skipIntro() {
+    const at = this.video.currentTime || 0;
+    const target = nextIntroEnd({
+      currentTime: at,
+      settings: this.settings,
+      learned: this.introEvidence,
+    });
+
+    if (Number.isFinite(this.video.duration) && this.video.readyState >= 1) {
+      this.video.currentTime = target;
+    } else {
+      this.pendingSeek = target;
+    }
+
+    this.setSkipOffered(false);
+    this.updateScrub();
+    this.save(true);
+    this.learnIntro(at);
+  }
+
+  // Remembers where the intro actually ended, so the next episode of the same
+  // title lands closer to the real mark.
+  learnIntro(at) {
+    if (!this.context.slug || !Number.isFinite(at)) return;
+    const mark = { ...learnIntroSkips({
+      skips: this.learned?.skips || [],
+      at,
+      settings: this.settings,
+      learned: this.learned,
+    }), updatedAt: Date.now() };
+    this.learned = mark;
+    if (!this.introSkip?.op) this.introEvidence = mark;
+    api.saveIntro({ slug: this.context.slug, mark }).catch(() => {
+      /* the local window still improves for this session */
+    });
+  }
+
   /* ------------------------------ up next -------------------------------- */
 
   prepareNextEpisode() {
@@ -1047,14 +1187,40 @@ export class Player {
     this.save(true);
     this.root.classList.remove('is-idle');
     this.syncPlayState();
+    this.setSkipOffered(false);
+    if (this.upnextDismissed) return;
     const next = this.prepareNextEpisode();
     if (!next) return;
     this.nextEpisode = next;
-    this.showUpNext(next);
+    this.showUpNext(next, true);
   }
 
-  showUpNext(next) {
-    this.countdownLeft = this.settings.autoplay ? AUTOPLAY_DELAY : 0;
+  // The card appears once the outro starts, not only when the file ends.
+  updateUpNextPrompt() {
+    if (!this.els?.upnext || this.video.ended) return;
+    if (this.upnextDismissed) return;
+
+    const open = this.els.upnext.classList.contains('is-open');
+    if (open) return;
+
+    const next = this.prepareNextEpisode();
+    if (!next) return;
+
+    const offer = shouldOfferNext({
+      currentTime: this.video.currentTime || 0,
+      duration: Number(this.video.duration),
+      settings: this.settings,
+      playing: !this.video.paused,
+    });
+    if (!offer) return;
+
+    this.nextEpisode = next;
+    this.showUpNext(next, false);
+  }
+
+  showUpNext(next, startCountdown = false) {
+    this.countdownLeft =
+      startCountdown && this.settings.autoplay ? AUTOPLAY_DELAY : 0;
     this.els.upnextTitle.textContent = next ? `${this.context.title} · Episode ${next.number}` : '';
     this.els.upnextMeta.textContent = '';
 
@@ -1114,6 +1280,7 @@ export class Player {
     this.els.errorText.textContent = detail ? `${message} ${detail}` : message;
     this.els.error.classList.add('is-open');
     this.root.classList.remove('is-buffering', 'is-idle');
+    this.setSkipOffered(false);
     this.closeMenus();
     this.hideUpNext();
   }
@@ -1141,6 +1308,7 @@ export class Player {
       slug: this.context.slug,
       title: this.context.title,
       poster: this.context.poster || '',
+      adult: this.context.adult === true,
       ep: this.ep,
       mode: this.mode,
       position,
@@ -1181,6 +1349,8 @@ export class Player {
     document.removeEventListener('keydown', this.onKey);
     document.removeEventListener('click', this.onDocClick);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    this.unsubscribeSkipTimes?.();
+    this.unsubscribeSkipTimes = null;
     this.root?.removeEventListener('click', this.onRootClick);
     this.root?.removeEventListener('pointermove', this.onPointerMove);
     this.els?.stage?.removeEventListener('click', this.onBillboard);

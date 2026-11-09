@@ -1,6 +1,7 @@
 'use strict';
 
 const { spawn } = require('node:child_process');
+const runtime = require('./runtime');
 
 const BASE = 'https://hianime.at';
 const UA =
@@ -358,14 +359,34 @@ function stripAnsi(value) {
   return String(value).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '');
 }
 
+function resolveAniCliCommand({ args = [], dir, platform = process.platform, env = process.env } = {}) {
+  const key = runtime.platformKey(platform);
+  const names = runtime.binaryNames(key);
+  const script = runtime.findExecutable(names.aniCli, { dir, env, platform });
+  if (!script) return null;
+  // ani-cli is a shell script, so Windows runs it through Git Bash.
+  if (key === 'win32') {
+    const bash = runtime.findExecutable(names.bash, { dir, env, platform });
+    if (!bash) return null;
+    return { command: bash, args: [script, ...args] };
+  }
+  return { command: script, args: [...args] };
+}
+
 function resolveViaAniCli({ query, index, epNumber, mode = 'sub', referer = '' }) {
   return new Promise((resolve, reject) => {
     const args = ['-S', String(Number(index) + 1), '-e', String(epNumber), '-q', 'best'];
     if (mode === 'dub') args.push('--dub');
     if (query) args.push(String(query));
 
-    const child = spawn('ani-cli', args, {
-      env: { ...process.env, ANI_CLI_PLAYER: 'debug' },
+    const resolved = resolveAniCliCommand({ args });
+    if (!resolved) {
+      reject(new UpstreamError('ani-cli is not installed. Run NAMI setup again.', { referer }));
+      return;
+    }
+
+    const child = spawn(resolved.command, resolved.args, {
+      env: { ...runtime.envWithRuntime(process.env), ANI_CLI_PLAYER: 'debug' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -435,5 +456,6 @@ module.exports = {
   getEpisodes,
   getAnimeInfo,
   resolveDirect,
+  resolveAniCliCommand,
   resolveViaAniCli,
 };

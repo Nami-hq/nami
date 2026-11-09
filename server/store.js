@@ -10,6 +10,8 @@ const stateDir = process.env.NAMI_STATE_DIR || path.join(stateRoot, 'nami');
 const cacheDir = path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'nami');
 const historyFile = path.join(stateDir, 'history.json');
 const settingsFile = path.join(stateDir, 'settings.json');
+const gateFile = path.join(stateDir, 'gate.json');
+const introFile = path.join(stateDir, 'intros.json');
 const aniCliHistory = path.join(stateRoot, 'ani-cli', 'ani-hsts');
 
 const defaultSettings = {
@@ -20,6 +22,15 @@ const defaultSettings = {
   muted: false,
   subtitles: true,
   theme: 'system',
+  introSkip: true,
+  introStart: 5,
+  introLength: 85,
+  outroSkip: true,
+  outroSeconds: 35,
+  useAniSkip: true,
+  adultFilter: true,
+  runtimeInstalled: false,
+  runtimePrompted: false,
 };
 
 function ensureDir(dir) {
@@ -57,8 +68,70 @@ function saveSettings(patch) {
   next.muted = Boolean(next.muted);
   next.subtitles = Boolean(next.subtitles);
   next.theme = ['system', 'light', 'dark'].includes(String(next.theme)) ? String(next.theme) : 'system';
+  next.introSkip = Boolean(next.introSkip);
+  next.outroSkip = Boolean(next.outroSkip);
+  next.useAniSkip = Boolean(next.useAniSkip);
+  next.adultFilter = Boolean(next.adultFilter);
+  next.runtimeInstalled = Boolean(next.runtimeInstalled);
+  next.introStart = clampNumber(next.introStart, 0, 900, 5);
+  next.introLength = clampNumber(next.introLength, 5, 300, 85);
+  next.outroSeconds = clampNumber(next.outroSeconds, 5, 300, 35);
   writeJson(settingsFile, next);
   return next;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+/* ------------------------------ the gate --------------------------------- */
+
+function readGate() {
+  const record = readJson(gateFile, null);
+  return record && typeof record === 'object' && record.hash ? record : null;
+}
+
+function writeGate(record) {
+  if (!record) {
+    try {
+      fs.rmSync(gateFile, { force: true });
+    } catch {
+      /* already gone */
+    }
+    return null;
+  }
+  writeJson(gateFile, record);
+  return record;
+}
+
+/* -------------------------- learned intro marks --------------------------- */
+
+function readIntros() {
+  const stored = readJson(introFile, {});
+  return stored && typeof stored === 'object' ? stored : {};
+}
+
+function saveIntroMark(slug, mark) {
+  if (!slug || !mark) return null;
+  const intros = readIntros();
+  const key = String(slug);
+  const previous = intros[key] || {};
+  intros[key] = {
+    start: Number(mark.start) || previous.start || 0,
+    end: Number(mark.end) || previous.end || 0,
+    skips: Array.isArray(mark.skips) ? mark.skips.slice(-7) : previous.skips || [],
+    updatedAt: Date.now(),
+  };
+  writeJson(introFile, intros);
+  return intros[key];
+}
+
+function readIntroMark(slug) {
+  const intros = readIntros();
+  const mark = slug ? intros[String(slug)] : null;
+  return mark && typeof mark === 'object' ? mark : null;
 }
 
 function keyFor(entry) {
@@ -87,6 +160,7 @@ function importAniCliHistory(entries) {
       duration: 0,
       updatedAt: 0,
       imported: true,
+      adult: false,
     };
     if (known.has(keyFor(entry))) continue;
     known.add(keyFor(entry));
@@ -114,6 +188,7 @@ function readHistory() {
       duration: Number(entry.duration) || 0,
       updatedAt: Number(entry.updatedAt) || 0,
       imported: Boolean(entry.imported),
+      adult: Boolean(entry.adult),
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -135,6 +210,7 @@ function saveHistoryEntry(input) {
     duration: Math.max(0, Number(input.duration) || 0),
     updatedAt: Date.now(),
     imported: false,
+    adult: Boolean(input.adult),
   };
   const key = keyFor(entry);
   const index = entries.findIndex((item) => keyFor(item) === key);
@@ -174,6 +250,10 @@ module.exports = {
   cacheDir,
   readSettings,
   saveSettings,
+  readGate,
+  writeGate,
+  readIntroMark,
+  saveIntroMark,
   readHistory,
   saveHistoryEntry,
   removeHistoryEntry,

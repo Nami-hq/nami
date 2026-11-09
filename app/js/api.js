@@ -51,6 +51,15 @@ export const api = {
   clearHistory: () => request('history.clear'),
   settings: () => request('settings.get'),
   saveSettings: (patch) => request('settings.save', { patch }),
+  skipTimes: (payload) => request('skip.times', payload),
+  saveIntro: (payload) => request('intro.save', payload),
+  gateStatus: () => request('gate.status'),
+  gateUnlock: (code) => request('gate.unlock', { code }),
+  gateLock: () => request('gate.lock'),
+  gateSetCode: (payload) => request('gate.setCode', payload),
+  gateClearCode: () => request('gate.clearCode'),
+  runtimeStatus: () => request('runtime.status'),
+  runtimeInstall: (force = false) => request('runtime.install', force ? { force: true } : {}),
 };
 
 export function imageUrl(url) {

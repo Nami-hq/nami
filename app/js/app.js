@@ -1,4 +1,5 @@
 import { api, imageUrl, ApiError } from './api.js';
+import { isLocked } from './gate-view.js';
 import {
   escapeHtml,
   icon,
@@ -46,6 +47,8 @@ const state = {
   results: null,
   detail: null,
   version: '',
+  gate: { filter: true, unlocked: false },
+  runtime: { ready: false, aniCli: null, ytDlp: null, dir: '', needsBash: false },
 };
 
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -79,6 +82,10 @@ let settingsView = null;
 let settingsDirty = false;
 let ambient = { url: '', index: 0 };
 
+function onLockedCard() {
+  toast('This title is locked. 21+ titles cannot be opened in NAMI.', { type: 'info' });
+}
+
 /* ----------------------------- boot ----------------------------------- */
 
 async function boot() {
@@ -90,9 +97,12 @@ async function boot() {
     state.history = Array.isArray(data.history) ? data.history : [];
     state.trending = Array.isArray(data.trending) ? data.trending : [];
     state.version = data.version || '';
+    if (data.gate) state.gate = data.gate;
+    if (data.runtime) state.runtime = data.runtime;
     renderDiscoverHome();
     setAmbient(state.trending[0]?.poster || '');
     if (settingsView) buildSettings();
+    maybeOpenSetup();
   } catch (error) {
     refs.discoverBody.replaceChildren(
       emptyState({
@@ -161,6 +171,10 @@ function bindChrome() {
   });
 
   refs.discoverBody.addEventListener('click', (event) => {
+    if (event.target.closest('[data-locked]')) {
+      onLockedCard();
+      return;
+    }
     const button = event.target.closest('[data-slug]');
     if (!button) return;
     const play =
@@ -172,7 +186,11 @@ function bindChrome() {
           }
         : null;
     openDetail(button.dataset.slug, {
-      fallback: { title: button.dataset.title, poster: button.dataset.poster },
+      fallback: {
+        title: button.dataset.title,
+        poster: button.dataset.poster,
+        adult: button.dataset.adult === '1',
+      },
       play,
       mode: play?.mode || state.settings.mode,
     });
@@ -352,7 +370,10 @@ function buildShelf({ title, note, items, ranked = false, resumable = false }) {
           episodes: 0,
         }
       : item;
-    const card = posterCard(cardItem, { rank: ranked ? item.rank || index + 1 : 0 });
+    const card = posterCard(cardItem, {
+      rank: ranked ? item.rank || index + 1 : 0,
+      locked: isLocked(item, state.gate),
+    });
     if (resumable) {
       const button = card.querySelector('button');
       button.dataset.resumeEp = item.ep;
@@ -421,7 +442,7 @@ function renderResults(query, items) {
       <div class="poster-grid"></div>
     </section>`;
   const grid = refs.discoverBody.querySelector('.poster-grid');
-  items.forEach((item) => grid.append(posterCard(item)));
+  items.forEach((item) => grid.append(posterCard(item, { locked: isLocked(item, state.gate) })));
 }
 
 function renderNoResults(query) {
@@ -482,6 +503,7 @@ function renderHistory() {
 
   for (const entry of state.history) {
     const poster = imageUrl(entry.poster);
+    const locked = isLocked(entry, state.gate);
     const pct = entry.duration > 0 ? Math.min(99, Math.round((entry.position / entry.duration) * 100)) : 0;
     const meta = [
       entry.mode === 'dub' ? 'Dub' : 'Sub',
@@ -493,25 +515,38 @@ function renderHistory() {
       .join(' · ');
 
     const article = document.createElement('article');
-    article.className = 'history-card';
+    article.className = `history-card${locked ? ' history-card--locked' : ''}`;
+    const mainButton = locked
+      ? `<button class="history-card__main" type="button" data-locked="${escapeHtml(entry.title)}"
+          aria-label="${escapeHtml(entry.title)} is 21+ and locked">
+          <span class="history-card__art history-card__art--locked">
+            ${poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''}
+            <span class="history-card__lock">${icon('lock')}</span>
+          </span>
+          <span class="history-card__text">
+            <span class="history-card__title">${escapeHtml(entry.title)}</span>
+            <span class="history-card__meta">Locked · 21+</span>
+          </span>
+        </button>`
+      : `<button class="history-card__main" type="button" data-history-resume
+          data-slug="${escapeHtml(entry.slug)}" data-title="${escapeHtml(entry.title)}"
+          data-poster="${escapeHtml(entry.poster)}" data-ep="${escapeHtml(entry.ep)}"
+          data-mode="${entry.mode}" data-position="${Number(entry.position) || 0}">
+          <span class="history-card__art">
+            ${poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''}
+          </span>
+          <span class="history-card__text">
+            <span class="history-card__title">${escapeHtml(entry.title)}</span>
+            <span class="history-card__meta">${escapeHtml(meta)}</span>
+            ${
+              pct
+                ? `<span class="history-card__progress"><i style="width:${pct}%"></i></span>`
+                : ''
+            }
+          </span>
+        </button>`;
     article.innerHTML = `
-      <button class="history-card__main" type="button" data-history-resume
-        data-slug="${escapeHtml(entry.slug)}" data-title="${escapeHtml(entry.title)}"
-        data-poster="${escapeHtml(entry.poster)}" data-ep="${escapeHtml(entry.ep)}"
-        data-mode="${entry.mode}" data-position="${Number(entry.position) || 0}">
-        <span class="history-card__art">
-          ${poster ? `<img src="${escapeHtml(poster)}" alt="" loading="lazy" data-fade />` : ''}
-        </span>
-        <span class="history-card__text">
-          <span class="history-card__title">${escapeHtml(entry.title)}</span>
-          <span class="history-card__meta">${escapeHtml(meta)}</span>
-          ${
-            pct
-              ? `<span class="history-card__progress"><i style="width:${pct}%"></i></span>`
-              : ''
-          }
-        </span>
-      </button>
+      ${mainButton}
       <button class="icon-button history-card__remove" type="button" data-history-remove
         data-slug="${escapeHtml(entry.slug)}" data-mode="${entry.mode}"
         data-title="${escapeHtml(entry.title)}" aria-label="Remove ${escapeHtml(
@@ -532,6 +567,10 @@ function renderHistory() {
 }
 
 async function onHistoryClick(event) {
+  if (event.target.closest('[data-locked]')) {
+    onLockedCard();
+    return;
+  }
   const remove = event.target.closest('[data-history-remove]');
   if (remove) {
     const { slug, mode, title } = remove.dataset;
@@ -684,6 +723,37 @@ function renderDetail() {
   const title = info.title || 'Untitled';
   const epCount = detail.episodes.length;
   const modeLabel = detail.mode === 'dub' ? 'Dub' : 'Sub';
+
+  if (isLocked(info, state.gate)) {
+    refs.detailLayer.innerHTML = `
+      <div class="detail detail--locked">
+        <div class="detail__veil"></div>
+        <div class="detail__scroll">
+          <header class="detail__bar">
+            <button class="icon-button" type="button" data-detail-close aria-label="Back">${icon(
+              'back'
+            )}</button>
+            <span class="detail__crumb">${escapeHtml(title)}</span>
+          </header>
+          <section class="detail__hero">
+            <div class="detail__poster is-locked">
+              ${poster ? `<img src="${escapeHtml(poster)}" alt="" data-fade />` : ''}
+              <span class="detail__lock">${icon('lock')}<span>21+</span></span>
+            </div>
+            <div class="detail__intro">
+              <p class="eyebrow">Locked</p>
+              <h1 class="display detail__title">${escapeHtml(title)}</h1>
+              <p class="detail__desc">This title is locked in NAMI. 21+ titles stay locked.</p>
+              <div class="detail__actions">
+                <button class="button button--ghost" type="button" data-detail-close>Back</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>`;
+    bindImages(refs.detailLayer);
+    return;
+  }
 
   const chips = [
     info.score ? `<span class="chip chip--score">${escapeHtml(info.score)} / 10</span>` : '',
@@ -854,6 +924,10 @@ function onDetailClick(event) {
 function startPlayback(ep, position = 0, mode = state.settings.mode) {
   const detail = state.detail;
   if (!detail) return;
+  if (isLocked(detail.info, state.gate)) {
+    toast('This title is locked. 21+ titles cannot be opened in NAMI.', { type: 'info' });
+    return;
+  }
   if (player) {
     player.destroy();
     player = null;
@@ -874,6 +948,7 @@ function startPlayback(ep, position = 0, mode = state.settings.mode) {
       slug: detail.slug,
       title: info.title || detail.slug,
       poster: info.poster || '',
+      adult: info.adult === true,
       mode,
       episodes: detail.episodes,
       ep: String(ep),
@@ -1003,6 +1078,66 @@ function buildSettings() {
           </div>
         </section>
 
+        <section class="setting-group glass">
+          <h2 class="setting-group__title">Player tools</h2>
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">ani-cli</span>
+              <span class="setting-row__desc">${escapeHtml(
+                state.runtime.aniCli || 'Not found. NAMI still streams; the fallback is off.'
+              )}</span>
+            </span>
+            <span class="setting-row__control">
+              <span class="pill">${state.runtime.aniCli ? 'Ready' : 'Missing'}</span>
+            </span>
+          </div>
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">yt-dlp</span>
+              <span class="setting-row__desc">${escapeHtml(
+                state.runtime.ytDlp || 'Not found. Needed for the ani-cli fallback.'
+              )}</span>
+            </span>
+            <span class="setting-row__control">
+              <span class="pill">${state.runtime.ytDlp ? 'Ready' : 'Missing'}</span>
+            </span>
+          </div>
+          ${
+            state.runtime.needsBash
+              ? `<div class="setting-row">
+                   <span class="setting-row__label">
+                     <span class="setting-row__name">Git Bash</span>
+                     <span class="setting-row__desc">ani-cli is a shell script. Install Git for Windows, then run setup again.</span>
+                   </span>
+                 </div>`
+              : ''
+          }
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">Reinstall</span>
+              <span class="setting-row__desc">${escapeHtml(
+                state.runtime.dir || 'The app keeps its own copies, separate from your system.'
+              )}</span>
+            </span>
+            <span class="setting-row__control">
+              <button class="button button--ghost" type="button" data-runtime-install>Reinstall</button>
+            </span>
+          </div>
+        </section>
+
+        <section class="setting-group glass">
+          <h2 class="setting-group__title">Content</h2>
+          <div class="setting-row">
+            <span class="setting-row__label">
+              <span class="setting-row__name">21+ titles</span>
+              <span class="setting-row__desc">Adult, ecchi and hentai titles stay locked in NAMI. There is no switch to reveal them here.</span>
+            </span>
+            <span class="setting-row__control setting-row__control--note">
+              <span class="pill pill--lock">${icon('lock')} Locked</span>
+            </span>
+          </div>
+        </section>
+
         <section class="setting-group glass setting-group--danger">
           <h2 class="setting-group__title">Your data</h2>
           <div class="setting-row">
@@ -1051,7 +1186,196 @@ function refreshSettingsControls() {
   if (quality) quality.value = state.settings.quality;
 }
 
+/* ----------------------------- setup ---------------------------------- */
+
+// First run: NAMI fetches its own ani-cli and yt-dlp so nobody touches a
+// terminal. Streaming works without them; they power the fallback path.
+function maybeOpenSetup() {
+  if (state.runtime?.ready) return;
+  if (state.settings.runtimePrompted) return;
+  openSetup();
+}
+
+function setupStepHtml(key, label) {
+  return `
+    <li class="setup__step" data-setup-step="${key}">
+      <span class="setup__dot"></span>
+      <span class="setup__step-text">
+        <span class="setup__step-name">${label}</span>
+        <span class="setup__step-path" data-setup-path="${key}">Waiting</span>
+      </span>
+    </li>`;
+}
+
+function openSetup() {
+  const root = document.getElementById('dialog-root');
+  if (!root || root.querySelector('.setup')) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    const previous = document.activeElement;
+    const layer = document.createElement('div');
+    layer.className = 'dialog-layer';
+    layer.innerHTML = `
+      <div class="dialog setup" role="dialog" aria-modal="true" aria-labelledby="setup-title" tabindex="-1">
+        <span class="dialog__mark">${icon('wave')}</span>
+        <h2 class="dialog__title" id="setup-title">Set up the player</h2>
+        <p class="dialog__text">
+          NAMI can download ani-cli and yt-dlp into its own folder. No terminal, no package manager.
+        </p>
+        <ul class="setup__steps">
+          ${setupStepHtml('ani-cli', 'ani-cli')}
+          ${setupStepHtml('yt-dlp', 'yt-dlp')}
+        </ul>
+        <p class="setup__note" data-setup-note aria-live="polite">
+          Streaming works without them. They power the fallback when a site changes.
+        </p>
+        <div class="dialog__actions">
+          <button class="button button--ghost" type="button" data-setup="later">Later</button>
+          <button class="button button--primary" type="button" data-setup="install">Install</button>
+        </div>
+      </div>`;
+
+    const note = layer.querySelector('[data-setup-note]');
+    const installButton = layer.querySelector('[data-setup="install"]');
+    const laterButton = layer.querySelector('[data-setup="later"]');
+    let settled = false;
+    let installing = false;
+    let succeeded = false;
+    let unsubscribe = null;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      unsubscribe?.();
+      layer.remove();
+      document.removeEventListener('keydown', onKey, true);
+      if (previous && typeof previous.focus === 'function') previous.focus();
+      resolve(value);
+    };
+
+    const onKey = (event) => {
+      if (event.key === 'Tab') {
+        const items = [...layer.querySelectorAll('button:not([disabled])')];
+        if (!items.length) {
+          event.preventDefault();
+          layer.querySelector('.dialog')?.focus();
+          return;
+        }
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+      if (event.key === 'Escape' && !settled && !installing) {
+        event.preventDefault();
+        state.settings.runtimePrompted = true;
+        api.saveSettings({ runtimePrompted: true }).catch(() => {});
+        finish(null);
+      }
+    };
+
+    const setStep = (key, stateName, path) => {
+      const row = layer.querySelector(`[data-setup-step="${key}"]`);
+      if (!row) return;
+      row.classList.toggle('is-done', stateName === 'done');
+      row.classList.toggle('is-busy', stateName === 'start');
+      const target = layer.querySelector(`[data-setup-path="${key}"]`);
+      if (target && path) target.textContent = path;
+      else if (target && stateName === 'start') target.textContent = 'Downloading…';
+    };
+
+    const setBusy = (busy) => {
+      installButton.disabled = busy;
+      laterButton.disabled = busy;
+      installButton.textContent = busy ? 'Installing…' : 'Retry';
+    };
+
+    installButton.addEventListener('click', async () => {
+      installing = true;
+      setBusy(true);
+      note.textContent = 'Downloading into ' + (state.runtime.dir || 'the app folder');
+      unsubscribe?.();
+      unsubscribe = window.nami?.runtime?.onProgress?.((progress) => {
+        if (progress?.step) setStep(progress.step, progress.state, progress.path);
+      });
+      try {
+        const status = await api.runtimeInstall();
+        state.runtime = status;
+        state.settings.runtimeInstalled = Boolean(status.ready);
+        if (status.problems?.length) {
+          note.textContent = status.problems.map((p) => p.message).join(' ');
+          return;
+        }
+        setStep('ani-cli', status.aniCli ? 'done' : 'start', status.aniCli);
+        setStep('yt-dlp', status.ytDlp ? 'done' : 'start', status.ytDlp);
+        if (status.ready) {
+          note.textContent = 'Ready. NAMI will use these from now on.';
+          toast('Player tools ready', { type: 'success' });
+          succeeded = true;
+          setTimeout(() => finish(status), 700);
+        } else {
+          note.textContent = 'The downloads did not finish. Check the connection and retry.';
+        }
+      } catch (error) {
+        note.textContent = error.message;
+      } finally {
+        installing = false;
+        // Leave the buttons disabled while the success card closes, so a
+        // second click cannot start an install against the same temp file.
+        if (!settled && !succeeded) setBusy(false);
+      }
+    });
+
+    laterButton.addEventListener('click', () => {
+      state.settings.runtimePrompted = true;
+      api.saveSettings({ runtimePrompted: true }).catch(() => {});
+      finish(null);
+    });
+
+    layer.addEventListener('pointerdown', (event) => {
+      if (event.target === layer && !installButton.disabled) {
+        state.settings.runtimePrompted = true;
+        api.saveSettings({ runtimePrompted: true }).catch(() => {});
+        finish(null);
+      }
+    });
+
+    document.addEventListener('keydown', onKey, true);
+    root.append(layer);
+    installButton.focus();
+  });
+}
+
 function onSettingsClick(event) {
+  const runtimeButton = event.target.closest('[data-runtime-install]');
+  if (runtimeButton) {
+    runtimeButton.disabled = true;
+    runtimeButton.textContent = 'Installing…';
+    api
+      .runtimeInstall(true)
+      .then((status) => {
+        state.runtime = status;
+        state.settings.runtimeInstalled = Boolean(status.ready);
+        if (status.ready) toast('Player tools ready', { type: 'success' });
+        else {
+          toast(status.problems?.[0]?.message || 'Setup needs another try', { type: 'error' });
+        }
+        buildSettings();
+      })
+      .catch((error) => {
+        runtimeButton.disabled = false;
+        runtimeButton.textContent = 'Reinstall';
+        toast(error.message, { type: 'error' });
+      });
+    return;
+  }
+
   const toggle = event.target.closest('[data-toggle]');
   if (toggle) {
     const key = toggle.dataset.toggle;

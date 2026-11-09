@@ -3,7 +3,42 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { parseVariants, parseEpisodes, parseServers, parseSearch } = require('../server/scrape');
+const { parseVariants, parseEpisodes, parseServers, parseSearch, resolveAniCliCommand } = require('../server/scrape');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+test('the ani-cli fallback uses the app runtime and bash on Windows', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nami-ani-'));
+  const script = path.join(dir, 'ani-cli');
+  fs.writeFileSync(script, '#!/bin/sh\n', { mode: 0o755 });
+
+  const linux = resolveAniCliCommand({
+    args: ['-S', '1'],
+    dir,
+    platform: 'linux',
+    env: { PATH: '/nonexistent' },
+  });
+  assert.equal(linux.command, script);
+  assert.deepEqual(linux.args, ['-S', '1']);
+
+  fs.writeFileSync(path.join(dir, 'bash.exe'), 'binary');
+  const windows = resolveAniCliCommand({
+    args: ['-S', '1'],
+    dir,
+    platform: 'win32',
+    env: { PATH: '' },
+  });
+  assert.equal(windows.command, path.join(dir, 'bash.exe'));
+  assert.deepEqual(windows.args, [script, '-S', '1']);
+
+  fs.rmSync(path.join(dir, 'bash.exe'));
+  assert.equal(
+    resolveAniCliCommand({ args: [], dir, platform: 'win32', env: { PATH: '' } }),
+    null
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+});
 
 test('parseVariants resolves URLs and sorts by height', () => {
   const master = [

@@ -18,4 +18,18 @@ contextBridge.exposeInMainWorld('nami', {
       return () => ipcRenderer.removeListener('nami:maximized', listener);
     },
   },
+  runtime: {
+    onProgress: (callback) => {
+      const listener = (_event, progress) => callback(progress);
+      ipcRenderer.on('nami:runtime', listener);
+      return () => ipcRenderer.removeListener('nami:runtime', listener);
+    },
+  },
+  skipTimes: {
+    onReady: (callback) => {
+      const listener = (_event, message) => callback(message);
+      ipcRenderer.on('nami:skip-times', listener);
+      return () => ipcRenderer.removeListener('nami:skip-times', listener);
+    },
+  },
 });
