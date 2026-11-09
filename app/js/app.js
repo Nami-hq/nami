@@ -82,11 +82,7 @@ let settingsDirty = false;
 let ambient = { url: '', index: 0 };
 
 function onLockedCard() {
-  if (!state.gate.hasCode) {
-    toast('Set an access code in Settings to unlock 21+ titles.', { type: 'info' });
-    return;
-  }
-  openGateDialog({ mode: 'unlock' });
+  toast('This title is locked. 21+ titles cannot be opened in NAMI.', { type: 'info' });
 }
 
 /* ----------------------------- boot ----------------------------------- */
@@ -1043,30 +1039,11 @@ function buildSettings() {
           <h2 class="setting-group__title">Content</h2>
           <div class="setting-row">
             <span class="setting-row__label">
-              <span class="setting-row__name">Blur 21+ titles</span>
-              <span class="setting-row__desc">Titles flagged adult, ecchi or hentai stay blurred and cannot be opened until you unlock them with your code.</span>
+              <span class="setting-row__name">21+ titles</span>
+              <span class="setting-row__desc">Adult, ecchi and hentai titles stay locked in NAMI. There is no switch to reveal them here.</span>
             </span>
-            <span class="setting-row__control">
-              <button class="switch" type="button" role="switch" data-toggle="adultFilter" aria-label="Blur 21+ titles"></button>
-            </span>
-          </div>
-          <div class="setting-row">
-            <span class="setting-row__label">
-              <span class="setting-row__name">Access code</span>
-              <span class="setting-row__desc">${
-                state.gate.hasCode
-                  ? 'A code is set. Unlock with it, or change it.'
-                  : 'Set a code so you can reveal locked titles when you want them.'
-              }</span>
-            </span>
-            <span class="setting-row__control">
-              ${
-                state.gate.hasCode
-                  ? `<button class="button button--ghost" type="button" data-gate="unlock">Unlock</button>
-                     <button class="button button--ghost" type="button" data-gate="set">Change code</button>
-                     <button class="button button--quiet" type="button" data-gate="clear">Remove</button>`
-                  : '<button class="button button--primary" type="button" data-gate="set">Set code</button>'
-              }
+            <span class="setting-row__control setting-row__control--note">
+              <span class="pill pill--lock">${icon('lock')} Locked</span>
             </span>
           </div>
         </section>
@@ -1102,7 +1079,6 @@ function refreshSettingsControls() {
   };
   toggle('autoplay');
   toggle('subtitles');
-  toggle('adultFilter');
 
   settingsView.querySelectorAll('[data-audio]').forEach((button) => {
     const active = state.settings.mode === button.dataset.audio;
@@ -1120,149 +1096,11 @@ function refreshSettingsControls() {
   if (quality) quality.value = state.settings.quality;
 }
 
-function refreshGateViews() {
-  if (state.results) renderResults(state.query, state.results);
-  else renderDiscoverHome();
-  renderHistory();
-  if (settingsView) buildSettings();
-}
-
-function openGateDialog({ mode }) {
-  const root = document.getElementById('dialog-root');
-  if (!root) return Promise.resolve(null);
-  const isSet = mode === 'set';
-  const needsCurrent = isSet && state.gate.hasCode;
-
-  return new Promise((resolve) => {
-    const previous = document.activeElement;
-    const layer = document.createElement('div');
-    layer.className = 'dialog-layer';
-    layer.innerHTML = `
-      <div class="dialog dialog--gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
-        <span class="dialog__mark">${icon('lock')}</span>
-        <h2 class="dialog__title" id="gate-title">${isSet ? 'Set an access code' : 'Unlock adult titles'}</h2>
-        <p class="dialog__text">${
-          isSet
-            ? 'The code is stored hashed on this machine. You need it to reveal 21+ titles.'
-            : 'Enter your access code to reveal 21+ titles for this session.'
-        }</p>
-        <form class="dialog__form">
-          ${
-            needsCurrent
-              ? '<input class="dialog__input" type="password" name="current" placeholder="Current code" aria-label="Current access code" autocomplete="off" />'
-              : ''
-          }
-          <input class="dialog__input" type="password" name="code" placeholder="${
-            isSet ? 'New code' : 'Access code'
-          }" aria-label="${isSet ? 'New access code' : 'Access code'}" autocomplete="off" />
-          ${
-            isSet
-              ? '<input class="dialog__input" type="password" name="confirm" placeholder="Repeat new code" aria-label="Repeat new access code" autocomplete="off" />'
-              : ''
-          }
-          <p class="dialog__error" role="alert" data-gate-error hidden></p>
-        </form>
-        <div class="dialog__actions">
-          <button class="button button--ghost" type="button" data-dialog="cancel">Cancel</button>
-          <button class="button button--primary" type="button" data-dialog="submit">${
-            isSet ? 'Save code' : 'Unlock'
-          }</button>
-        </div>
-      </div>`;
-
-    const form = layer.querySelector('.dialog__form');
-    const errorNode = layer.querySelector('[data-gate-error]');
-    const showError = (message) => {
-      errorNode.textContent = message;
-      errorNode.hidden = false;
-    };
-
-    let settled = false;
-    const finish = (value) => {
-      if (settled) return;
-      settled = true;
-      layer.remove();
-      document.removeEventListener('keydown', onKey, true);
-      if (previous && typeof previous.focus === 'function') previous.focus();
-      resolve(value);
-    };
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        finish(null);
-      }
-    };
-
-    const submit = async () => {
-      const data = new FormData(form);
-      const code = String(data.get('code') || '');
-      try {
-        if (isSet) {
-          if (code !== String(data.get('confirm') || '')) {
-            showError('The two codes do not match');
-            return;
-          }
-          state.gate = await api.gateSetCode({ code, current: String(data.get('current') || '') });
-          finish(state.gate);
-          refreshGateViews();
-          toast('Access code saved', { type: 'success' });
-        } else {
-          state.gate = await api.gateUnlock(code);
-          finish(state.gate);
-          refreshGateViews();
-          toast('21+ titles unlocked', { type: 'success' });
-        }
-      } catch (error) {
-        showError(error.message);
-      }
-    };
-
-    layer.querySelector('[data-dialog="cancel"]')?.addEventListener('click', () => finish(null));
-    layer.querySelector('[data-dialog="submit"]')?.addEventListener('click', submit);
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      submit();
-    });
-    layer.addEventListener('pointerdown', (event) => {
-      if (event.target === layer) finish(null);
-    });
-    document.addEventListener('keydown', onKey, true);
-    root.append(layer);
-    layer.querySelector('input')?.focus();
-  });
-}
-
 function onSettingsClick(event) {
-  const gate = event.target.closest('[data-gate]');
-  if (gate) {
-    const action = gate.dataset.gate;
-    if (action === 'unlock') openGateDialog({ mode: 'unlock' });
-    else if (action === 'set') openGateDialog({ mode: 'set' });
-    else if (action === 'clear') {
-      confirmDialog({
-        title: 'Remove the access code?',
-        text: 'Locked 21+ titles go back to blurred and stay that way until you set a new code.',
-        confirmLabel: 'Remove code',
-        danger: true,
-      }).then(async (approved) => {
-        if (!approved) return;
-        try {
-          state.gate = await api.gateClearCode();
-          refreshGateViews();
-          toast('Access code removed');
-        } catch (error) {
-          toast(error.message, { type: 'error' });
-        }
-      });
-    }
-    return;
-  }
-
   const toggle = event.target.closest('[data-toggle]');
   if (toggle) {
     const key = toggle.dataset.toggle;
     updateSettings({ [key]: !state.settings[key] });
-    if (key === 'adultFilter') refreshGateViews();
     return;
   }
 
