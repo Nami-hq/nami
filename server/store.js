@@ -160,6 +160,7 @@ function importAniCliHistory(entries) {
       duration: 0,
       updatedAt: 0,
       imported: true,
+      adult: false,
     };
     if (known.has(keyFor(entry))) continue;
     known.add(keyFor(entry));
@@ -187,6 +188,7 @@ function readHistory() {
       duration: Number(entry.duration) || 0,
       updatedAt: Number(entry.updatedAt) || 0,
       imported: Boolean(entry.imported),
+      adult: Boolean(entry.adult),
     }))
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
@@ -208,6 +210,7 @@ function saveHistoryEntry(input) {
     duration: Math.max(0, Number(input.duration) || 0),
     updatedAt: Date.now(),
     imported: false,
+    adult: Boolean(input.adult),
   };
   const key = keyFor(entry);
   const index = entries.findIndex((item) => keyFor(item) === key);

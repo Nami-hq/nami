@@ -93,7 +93,11 @@ async function getJson(url) {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(TIMEOUT),
   });
-  if (!response.ok) throw new Error(`${new URL(url).host} returned HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(`${new URL(url).host} returned HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return response.json();
 }
 
@@ -109,6 +113,19 @@ async function findMalId(title, cache) {
   return id;
 }
 
+function skipKey(title, episode) {
+  return `${normalizeTitle(title)}#${episode}`;
+}
+
+/** A cached answer, without touching the network. */
+function cachedSkipTimes({ title, episode }) {
+  const ep = Number(episode);
+  if (!title || !Number.isFinite(ep) || ep < 1) return { found: false, value: null };
+  const hit = readCache().skip[skipKey(title, ep)];
+  if (hit && Date.now() - hit.at < SKIP_TTL) return { found: true, value: hit.value };
+  return { found: false, value: null };
+}
+
 /**
  * Skip marks for one episode. Returns null when neither service knows the title,
  * so the player falls back to its own window and its own learning.
@@ -117,11 +134,12 @@ async function skipTimesFor({ title, episode }) {
   const ep = Number(episode);
   if (!title || !Number.isFinite(ep) || ep < 1) return null;
   const cache = readCache();
-  const skipKey = `${normalizeTitle(title)}#${ep}`;
-  const hit = cache.skip[skipKey];
+  const key = skipKey(title, ep);
+  const hit = cache.skip[key];
   if (hit && Date.now() - hit.at < SKIP_TTL) return hit.value;
 
   let value = null;
+  let transient = false;
   try {
     const malId = await findMalId(title, cache);
     if (malId) {
@@ -130,11 +148,15 @@ async function skipTimesFor({ title, episode }) {
       const normalized = normalizeSkipTimes(payload);
       if (normalized) value = { malId, episode: ep, ...normalized };
     }
-  } catch {
-    value = null;
+  } catch (error) {
+    // A 404 is a definite "no marks". A timeout or 5xx must not poison the
+    // cache for a month; the next play asks again.
+    transient = error?.status !== 404;
   }
-  cache.skip[skipKey] = { value, at: Date.now() };
-  writeCache(cache);
+  if (!transient) {
+    cache.skip[key] = { value, at: Date.now() };
+    writeCache(cache);
+  }
   return value;
 }
 
@@ -143,6 +165,7 @@ module.exports = {
   pickMalId,
   normalizeSkipTimes,
   skipTimesFor,
+  cachedSkipTimes,
   MAL_TTL,
   SKIP_TTL,
 };

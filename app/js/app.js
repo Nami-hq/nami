@@ -186,7 +186,11 @@ function bindChrome() {
           }
         : null;
     openDetail(button.dataset.slug, {
-      fallback: { title: button.dataset.title, poster: button.dataset.poster },
+      fallback: {
+        title: button.dataset.title,
+        poster: button.dataset.poster,
+        adult: button.dataset.adult === '1',
+      },
       play,
       mode: play?.mode || state.settings.mode,
     });
@@ -720,6 +724,37 @@ function renderDetail() {
   const epCount = detail.episodes.length;
   const modeLabel = detail.mode === 'dub' ? 'Dub' : 'Sub';
 
+  if (isLocked(info, state.gate)) {
+    refs.detailLayer.innerHTML = `
+      <div class="detail detail--locked">
+        <div class="detail__veil"></div>
+        <div class="detail__scroll">
+          <header class="detail__bar">
+            <button class="icon-button" type="button" data-detail-close aria-label="Back">${icon(
+              'back'
+            )}</button>
+            <span class="detail__crumb">${escapeHtml(title)}</span>
+          </header>
+          <section class="detail__hero">
+            <div class="detail__poster is-locked">
+              ${poster ? `<img src="${escapeHtml(poster)}" alt="" data-fade />` : ''}
+              <span class="detail__lock">${icon('lock')}<span>21+</span></span>
+            </div>
+            <div class="detail__intro">
+              <p class="eyebrow">Locked</p>
+              <h1 class="display detail__title">${escapeHtml(title)}</h1>
+              <p class="detail__desc">This title is locked in NAMI. 21+ titles stay locked.</p>
+              <div class="detail__actions">
+                <button class="button button--ghost" type="button" data-detail-close>Back</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>`;
+    bindImages(refs.detailLayer);
+    return;
+  }
+
   const chips = [
     info.score ? `<span class="chip chip--score">${escapeHtml(info.score)} / 10</span>` : '',
     info.status ? `<span class="chip">${escapeHtml(info.status)}</span>` : '',
@@ -889,6 +924,10 @@ function onDetailClick(event) {
 function startPlayback(ep, position = 0, mode = state.settings.mode) {
   const detail = state.detail;
   if (!detail) return;
+  if (isLocked(detail.info, state.gate)) {
+    toast('This title is locked. 21+ titles cannot be opened in NAMI.', { type: 'info' });
+    return;
+  }
   if (player) {
     player.destroy();
     player = null;
@@ -1186,7 +1225,7 @@ function openSetup() {
           ${setupStepHtml('ani-cli', 'ani-cli')}
           ${setupStepHtml('yt-dlp', 'yt-dlp')}
         </ul>
-        <p class="setup__note" data-setup-note>
+        <p class="setup__note" data-setup-note aria-live="polite">
           Streaming works without them. They power the fallback when a site changes.
         </p>
         <div class="dialog__actions">
@@ -1199,6 +1238,7 @@ function openSetup() {
     const installButton = layer.querySelector('[data-setup="install"]');
     const laterButton = layer.querySelector('[data-setup="later"]');
     let settled = false;
+    let installing = false;
     let unsubscribe = null;
 
     const finish = (value) => {
@@ -1212,7 +1252,21 @@ function openSetup() {
     };
 
     const onKey = (event) => {
-      if (event.key === 'Escape' && !settled) {
+      if (event.key === 'Tab') {
+        const items = [...layer.querySelectorAll('button:not([disabled])')];
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+      if (event.key === 'Escape' && !settled && !installing) {
         event.preventDefault();
         state.settings.runtimePrompted = true;
         api.saveSettings({ runtimePrompted: true }).catch(() => {});
@@ -1237,6 +1291,7 @@ function openSetup() {
     };
 
     installButton.addEventListener('click', async () => {
+      installing = true;
       setBusy(true);
       note.textContent = 'Downloading into ' + (state.runtime.dir || 'the app folder');
       unsubscribe?.();
@@ -1249,7 +1304,6 @@ function openSetup() {
         state.settings.runtimeInstalled = Boolean(status.ready);
         if (status.problems?.length) {
           note.textContent = status.problems.map((p) => p.message).join(' ');
-          setBusy(false);
           return;
         }
         setStep('ani-cli', status.aniCli ? 'done' : 'start', status.aniCli);
@@ -1260,11 +1314,12 @@ function openSetup() {
           setTimeout(() => finish(status), 700);
         } else {
           note.textContent = 'The downloads did not finish. Check the connection and retry.';
-          setBusy(false);
         }
       } catch (error) {
         note.textContent = error.message;
-        setBusy(false);
+      } finally {
+        installing = false;
+        if (!settled) setBusy(false);
       }
     });
 
@@ -1294,7 +1349,7 @@ function onSettingsClick(event) {
     runtimeButton.disabled = true;
     runtimeButton.textContent = 'Installing…';
     api
-      .runtimeInstall()
+      .runtimeInstall(true)
       .then((status) => {
         state.runtime = status;
         state.settings.runtimeInstalled = Boolean(status.ready);

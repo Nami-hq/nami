@@ -7,21 +7,33 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
+const crypto = require('node:crypto');
 
 const stateRoot = process.env.XDG_STATE_HOME || path.join(os.homedir(), '.local', 'state');
 const stateDir = process.env.NAMI_STATE_DIR || path.join(stateRoot, 'nami');
 const binRoot = process.env.NAMI_BIN_DIR || path.join(stateDir, 'bin');
 
+// Pinned on 2026-11-09. Bump the commit, the version and their hashes together;
+// the installer refuses a file that does not match.
+const ANI_CLI_COMMIT = '2cc8ae2c27324c8e684e4dc4223698c1f6caec03';
+const ANI_CLI_SHA256 = 'be466708dd5bd5f5ae4feff3dbb47fc5f048a7f801f11e1264db9cab83c3d146';
 const ANI_CLI_URLS = [
-  'https://raw.githubusercontent.com/pystardust/ani-cli/master/ani-cli',
-  'https://raw.githubusercontent.com/ani-cli/ani-cli/master/ani-cli',
+  `https://raw.githubusercontent.com/pystardust/ani-cli/${ANI_CLI_COMMIT}/ani-cli`,
+  `https://raw.githubusercontent.com/ani-cli/ani-cli/${ANI_CLI_COMMIT}/ani-cli`,
 ];
 
+const YT_DLP_VERSION = '2026.10.26';
+const YT_DLP_BASE = `https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}`;
 const YT_DLP_URLS = {
-  linux: ['https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp'],
-  darwin: ['https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos'],
-  win32: ['https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe'],
+  linux: [`${YT_DLP_BASE}/yt-dlp`],
+  darwin: [`${YT_DLP_BASE}/yt-dlp_macos`],
+  win32: [`${YT_DLP_BASE}/yt-dlp.exe`],
+};
+const YT_DLP_SHA256 = {
+  linux: 'e51e69e89489f199530f13d32a4342da3ddb2cf34842f364603a066db05afbf3',
+  darwin: '0f922c15ccc0b83eefa1c8bc9104e434318c4bf16e408e1ee93b7745a6efe0aa',
+  win32: 'f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d',
 };
 
 function platformKey(platform = process.platform) {
@@ -42,12 +54,12 @@ function ensureBinDir(dir = binRoot) {
 }
 
 /** Look for an executable on PATH, and in the app's own bin directory first. */
-function findExecutable(name, { dir = binRoot, env = process.env } = {}) {
+function findExecutable(name, { dir = binRoot, env = process.env, platform = process.platform } = {}) {
   const own = path.join(dir, name);
   if (fs.existsSync(own)) {
-    if (process.platform === 'win32' || fs.statSync(own).mode & 0o111) return own;
+    if (platform === 'win32' || fs.statSync(own).mode & 0o111) return own;
   }
-  if (process.platform === 'win32') {
+  if (platform === 'win32') {
     const where = spawnSync('where', [name], { encoding: 'utf8', env });
     const line = String(where.stdout || '').split(/\r?\n/).find(Boolean);
     return line ? line.trim() : null;
@@ -78,7 +90,7 @@ function runtimeStatus(options = {}) {
     aniCli,
     ytDlp,
     bash,
-    ready: Boolean(aniCli && ytDlp),
+    ready: Boolean(aniCli && ytDlp && (key !== 'win32' || bash)),
     // ani-cli is a shell script, so Windows needs a bash for the fallback path.
     needsBash: key === 'win32' && !bash,
   };
@@ -91,7 +103,12 @@ function envWithRuntime(base = process.env, dir = binRoot) {
   return { ...base, PATH: `${dir}${separator}${path}` };
 }
 
-async function download(url, destination) {
+function matchesChecksum(buffer, expected) {
+  if (!expected || typeof expected !== 'string' || !/^[0-9a-f]{64}$/i.test(expected)) return false;
+  return crypto.createHash('sha256').update(buffer).digest('hex').toLowerCase() === expected.toLowerCase();
+}
+
+async function download(url, destination, { sha256 = '' } = {}) {
   const response = await fetch(url, {
     redirect: 'follow',
     headers: { 'user-agent': 'NAMI' },
@@ -100,6 +117,9 @@ async function download(url, destination) {
   if (!response.ok) throw new Error(`${new URL(url).host} returned HTTP ${response.status}`);
   const buffer = Buffer.from(await response.arrayBuffer());
   if (buffer.length < 1024) throw new Error('The download was too small to be a binary');
+  if (sha256 && !matchesChecksum(buffer, sha256)) {
+    throw new Error('The download did not match its pinned checksum');
+  }
   const temp = `${destination}.${process.pid}.tmp`;
   fs.writeFileSync(temp, buffer, { mode: 0o755 });
   fs.renameSync(temp, destination);
@@ -107,11 +127,11 @@ async function download(url, destination) {
   return destination;
 }
 
-async function downloadFirst(urls, destination) {
+async function downloadFirst(urls, destination, options = {}) {
   let lastError = null;
   for (const url of urls) {
     try {
-      return await download(url, destination);
+      return await download(url, destination, options);
     } catch (error) {
       lastError = error;
     }
@@ -123,7 +143,7 @@ async function installAniCli({ dir = ensureBinDir(), onProgress = () => {} } = {
   const names = binaryNames();
   const target = path.join(dir, names.aniCli);
   onProgress({ step: 'ani-cli', state: 'start' });
-  await downloadFirst(ANI_CLI_URLS, target);
+  await downloadFirst(ANI_CLI_URLS, target, { sha256: ANI_CLI_SHA256 });
   const text = fs.readFileSync(target, 'utf8');
   if (!text.startsWith('#!') || !/ani-cli/i.test(text.slice(0, 4000))) {
     fs.rmSync(target, { force: true });
@@ -138,9 +158,32 @@ async function installYtDlp({ dir = ensureBinDir(), onProgress = () => {}, platf
   const names = binaryNames(key);
   const target = path.join(dir, names.ytDlp);
   onProgress({ step: 'yt-dlp', state: 'start' });
-  await downloadFirst(YT_DLP_URLS[key], target);
+  await downloadFirst(YT_DLP_URLS[key], target, { sha256: YT_DLP_SHA256[key] });
   onProgress({ step: 'yt-dlp', state: 'done', path: target });
   return target;
+}
+
+/** winget can take minutes on a cold machine, so never block the main process. */
+function runWinget() {
+  return new Promise((resolve) => {
+    const child = spawn(
+      'winget',
+      ['install', '--id', 'Git.Git', '-e', '--accept-package-agreements', '--accept-source-agreements'],
+      { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true }
+    );
+    const timer = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, timedOut: true });
+    }, 180_000);
+    child.on('error', () => {
+      clearTimeout(timer);
+      resolve({ ok: false, timedOut: false });
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, timedOut: false });
+    });
+  });
 }
 
 /**
@@ -167,18 +210,19 @@ async function installRuntime({ onProgress = () => {}, force = false, dir } = {}
     }
   }
 
-  const status = runtimeStatus({ dir: target });
+  let status = runtimeStatus({ dir: target });
   if (status.needsBash) {
-    const attempt = spawnSync(
-      'winget',
-      ['install', '--id', 'Git.Git', '-e', '--accept-package-agreements', '--accept-source-agreements'],
-      { encoding: 'utf8' }
-    );
-    if (attempt.error || attempt.status !== 0) {
+    onProgress({ step: 'bash', state: 'start' });
+    await runWinget();
+    status = runtimeStatus({ dir: target });
+    if (status.needsBash) {
+      onProgress({ step: 'bash', state: 'failed' });
       problems.push({
         step: 'bash',
         message: 'ani-cli needs Git Bash on Windows. Install Git for Windows, then run setup again.',
       });
+    } else {
+      onProgress({ step: 'bash', state: 'done', path: status.bash });
     }
   }
 
@@ -187,12 +231,18 @@ async function installRuntime({ onProgress = () => {}, force = false, dir } = {}
 
 module.exports = {
   binRoot,
+  ANI_CLI_COMMIT,
+  ANI_CLI_SHA256,
+  YT_DLP_VERSION,
+  YT_DLP_URLS,
+  YT_DLP_SHA256,
   platformKey,
   binaryNames,
   ensureBinDir,
   findExecutable,
   runtimeStatus,
   envWithRuntime,
+  matchesChecksum,
   installRuntime,
   installAniCli,
   installYtDlp,

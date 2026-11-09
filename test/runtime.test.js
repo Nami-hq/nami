@@ -8,6 +8,7 @@ const runtime = require('../server/runtime');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 
 test('a site title lands on the right MAL entry', () => {
   const results = [
@@ -41,6 +42,37 @@ test('the runtime knows the right file names per platform', () => {
   assert.equal(runtime.binaryNames('win32').ytDlp, 'yt-dlp.exe');
   assert.equal(runtime.platformKey('darwin'), 'darwin');
   assert.equal(runtime.platformKey('freebsd'), 'linux');
+});
+
+test('downloads must match the pinned checksum', () => {
+  const buffer = Buffer.from('hello');
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+  assert.equal(runtime.matchesChecksum(buffer, hash), true);
+  assert.equal(runtime.matchesChecksum(buffer, '0'.repeat(64)), false);
+  assert.equal(runtime.matchesChecksum(buffer, ''), false);
+});
+
+test('the runtime pins the versions it downloads', () => {
+  assert.match(runtime.ANI_CLI_COMMIT, /^[0-9a-f]{40}$/);
+  assert.equal(runtime.ANI_CLI_SHA256.length, 64);
+  assert.equal(runtime.YT_DLP_VERSION, '2026.10.26');
+  assert.ok(runtime.YT_DLP_URLS.linux[0].includes('/download/2026.10.26/'));
+  assert.equal(runtime.YT_DLP_SHA256.win32.length, 64);
+});
+
+test('Windows is not ready without a bash for ani-cli', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nami-win-'));
+  fs.writeFileSync(path.join(dir, 'ani-cli'), '#!/bin/sh\n');
+  fs.writeFileSync(path.join(dir, 'yt-dlp.exe'), 'binary');
+  const env = { PATH: '' };
+  const without = runtime.runtimeStatus({ dir, platform: 'win32', env });
+  assert.equal(without.ready, false);
+  assert.equal(without.needsBash, true);
+  fs.writeFileSync(path.join(dir, 'bash.exe'), 'binary');
+  const withBash = runtime.runtimeStatus({ dir, platform: 'win32', env });
+  assert.equal(withBash.ready, true);
+  assert.equal(withBash.needsBash, false);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('a bin directory on the app path wins over PATH', () => {

@@ -5,6 +5,7 @@ import {
   nextIntroEnd,
   learnIntroSkips,
   shouldOfferNext,
+  pickLearnedMark,
 } from './playback-rules.js';
 
 const IDLE_DELAY = 2800;
@@ -42,6 +43,7 @@ export class Player {
     this.lastVolume = settings.muted ? 0 : Number(settings.volume) || 1;
     this.networkRetried = false;
     this.dragging = false;
+    this.unsubscribeSkipTimes = null;
     this.introSkip = null;
     this.learned = null;
     this.introEvidence = null;
@@ -181,7 +183,8 @@ export class Player {
     this.video = q('.player__video');
     this.els = {
       stage: q('.player__stage'),
-      flash: q('.player__flash'),      epLabel: q('[data-ep-label]'),
+      flash: q('.player__flash'),
+      epLabel: q('[data-ep-label]'),
       qualityLabel: q('[data-quality-label]'),
       qualityButton: q('[data-quality-button]'),
       current: q('[data-current]'),
@@ -244,6 +247,8 @@ export class Player {
     document.addEventListener('click', this.onDocClick);
     document.addEventListener('keydown', this.onKey);
     this.els.stage.addEventListener('click', this.onBillboard);
+    this.unsubscribeSkipTimes =
+      window.nami?.skipTimes?.onReady?.((message) => this.applySkipTimes(message)) || null;
 
     video.addEventListener('play', () => this.syncPlayState());
     video.addEventListener('pause', () => this.syncPlayState());
@@ -1078,14 +1083,27 @@ export class Player {
       const result = await api.skipTimes({ title: this.context.title, slug, ep });
       if (this.destroyed || this.ep !== ep) return;
       this.introSkip = result?.skip || null;
-      this.learned = result?.learned || null;
+      this.learned = pickLearnedMark(this.learned, result?.learned || null);
       this.introEvidence = this.effectiveIntro();
       this.updateSkipIntro();
     } catch {
-      /* offline or the service is down: the local window still works */
+      // Offline or the service is down. The local window still works, and a
+      // late answer for an episode we already left must not touch this one.
+      if (this.destroyed || this.ep !== ep) return;
       this.introSkip = null;
       this.introEvidence = this.learned || null;
+      this.updateSkipIntro();
     }
+  }
+
+  /** AniSkip answers after the first frames; apply it only to its own episode. */
+  applySkipTimes(message) {
+    if (!message || this.destroyed) return;
+    if (String(message.slug) !== String(this.context.slug)) return;
+    if (String(message.ep) !== String(this.ep)) return;
+    if (message.skip) this.introSkip = message.skip;
+    this.introEvidence = this.effectiveIntro();
+    this.updateSkipIntro();
   }
 
   effectiveIntro() {
@@ -1142,12 +1160,12 @@ export class Player {
   // title lands closer to the real mark.
   learnIntro(at) {
     if (!this.context.slug || !Number.isFinite(at)) return;
-    const mark = learnIntroSkips({
+    const mark = { ...learnIntroSkips({
       skips: this.learned?.skips || [],
       at,
       settings: this.settings,
       learned: this.learned,
-    });
+    }), updatedAt: Date.now() };
     this.learned = mark;
     if (!this.introSkip?.op) this.introEvidence = mark;
     api.saveIntro({ slug: this.context.slug, mark }).catch(() => {
@@ -1327,6 +1345,8 @@ export class Player {
     document.removeEventListener('keydown', this.onKey);
     document.removeEventListener('click', this.onDocClick);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+    this.unsubscribeSkipTimes?.();
+    this.unsubscribeSkipTimes = null;
     this.root?.removeEventListener('click', this.onRootClick);
     this.root?.removeEventListener('pointermove', this.onPointerMove);
     this.els?.stage?.removeEventListener('click', this.onBillboard);

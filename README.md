@@ -8,10 +8,10 @@ switch in settings.
 
 ## What it needs
 
-NAMI drives ani-cli and yt-dlp; it does not bundle them. Install both and put them on your `PATH`:
-
-- [ani-cli](https://github.com/pystardust/ani-cli)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+NAMI streams from the site's own endpoints out of the box. On first run it fetches its own copies of
+[ani-cli](https://github.com/pystardust/ani-cli) and [yt-dlp](https://github.com/yt-dlp/yt-dlp) into its
+state folder, so you do not need either one on your `PATH`. The copies are version-pinned and checked
+against a published SHA-256 before they are run.
 
 On Linux the AppImage also needs the usual Chromium runtime libraries (`gtk3`, `nss`, `alsa-lib`,
 `libnotify`, `xdg-utils`, `at-spi2-core`).

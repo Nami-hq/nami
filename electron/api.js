@@ -9,6 +9,21 @@ const { version } = require('../package.json');
 
 let trendingCache = { at: 0, items: [] };
 const infoCache = new Map();
+// Slugs the gate has flagged this run. A resolve for one never reaches a stream.
+const adultSlugs = new Set();
+
+function rememberAdult(item) {
+  if (item?.adult === true && item.slug) adultSlugs.add(String(item.slug));
+  return item;
+}
+
+function classifyItems(items) {
+  return gate.classifyAll(items).map(rememberAdult);
+}
+
+function classifyItem(item) {
+  return rememberAdult(gate.classify(item));
+}
 // Unlocked for this run only; closing NAMI puts the blur back.
 let gateUnlocked = false;
 
@@ -68,8 +83,8 @@ async function call(method, payload = {}, context = {}) {
       const settings = store.readSettings();
       const state = gateState();
       return {
-        trending: gate.classifyAll(trending),
-        history: gate.classifyAll(history),
+        trending: classifyItems(trending),
+        history: classifyItems(history),
         settings,
         version,
         gate: state,
@@ -78,12 +93,12 @@ async function call(method, payload = {}, context = {}) {
     }
 
     case 'trending':
-      return { items: gate.classifyAll(await getTrending()) };
+      return { items: classifyItems(await getTrending()) };
 
     case 'search': {
       const query = String(payload.query || '').trim();
       if (query.length < 2) throw apiError('Type at least two characters', 400, 'bad_query');
-      return { items: gate.classifyAll(await scrape.searchAnime(query)), query };
+      return { items: classifyItems(await scrape.searchAnime(query)), query };
     }
 
     case 'episodes': {
@@ -97,7 +112,7 @@ async function call(method, payload = {}, context = {}) {
       if (!slug) throw apiError('Missing anime id', 400, 'bad_request');
       const cached = infoCache.get(slug);
       if (cached && Date.now() - cached.at < 60 * 60_000) return cached.value;
-      const value = await scrape.getAnimeInfo(slug);
+      const value = classifyItem(await scrape.getAnimeInfo(slug));
       infoCache.set(slug, { at: Date.now(), value });
       return value;
     }
@@ -111,6 +126,9 @@ async function call(method, payload = {}, context = {}) {
       const index = payload.index;
       if (!slug || !/^[0-9]+(\.[0-9]+)?$/.test(ep)) {
         throw apiError('Missing anime or episode', 400, 'bad_request');
+      }
+      if (adultSlugs.has(slug)) {
+        throw apiError('This title is locked', 403, 'adult_locked');
       }
       try {
         return await scrape.resolveDirect({ slug, epNumber: ep, epId, mode });
@@ -131,11 +149,11 @@ async function call(method, payload = {}, context = {}) {
     case 'history.list': {
       const history = store.readHistory();
       enrichHistoryInBackground(history);
-      return { items: gate.classifyAll(history) };
+      return { items: classifyItems(history) };
     }
 
     case 'history.save':
-      return { entry: store.saveHistoryEntry(payload.entry) };
+      return { entry: store.saveHistoryEntry(classifyItem(payload.entry || {})) };
 
     case 'history.remove':
       store.removeHistoryEntry(String(payload.slug || ''), payload.mode);
@@ -146,13 +164,30 @@ async function call(method, payload = {}, context = {}) {
       return { ok: true };
 
     case 'skip.times': {
+      const learned = store.readIntroMark(payload.slug);
       const settings = store.readSettings();
-      if (!settings.useAniSkip) return { skip: null, source: 'disabled' };
+      if (!settings.useAniSkip) return { skip: null, learned, source: 'disabled' };
+
       const title = String(payload.title || '');
       const episode = String(payload.ep || '');
-      const learned = store.readIntroMark(payload.slug);
-      const marks = await skipTimes.skipTimesFor({ title, episode });
-      return { skip: marks, learned, source: marks ? 'aniskip' : 'local' };
+      const cached = skipTimes.cachedSkipTimes({ title, episode });
+      if (cached.found) {
+        return { skip: cached.value, learned, source: cached.value ? 'aniskip' : 'local' };
+      }
+
+      // Do not hold the first frame for a network lookup. The player pushes the
+      // answer when it lands and applies it only to the same episode.
+      skipTimes
+        .skipTimesFor({ title, episode })
+        .then((skip) =>
+          context.send?.('nami:skip-times', {
+            slug: String(payload.slug || ''),
+            ep: episode,
+            skip,
+          })
+        )
+        .catch(() => {});
+      return { skip: null, learned, source: 'local', pending: true };
     }
 
     case 'intro.save': {
@@ -200,6 +235,7 @@ async function call(method, payload = {}, context = {}) {
 
     case 'runtime.install': {
       const status = await runtime.installRuntime({
+        force: Boolean(payload.force),
         onProgress: (progress) => context.send?.('nami:runtime', progress),
       });
       store.saveSettings({ runtimeInstalled: status.ready });

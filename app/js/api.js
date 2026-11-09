@@ -59,7 +59,7 @@ export const api = {
   gateSetCode: (payload) => request('gate.setCode', payload),
   gateClearCode: () => request('gate.clearCode'),
   runtimeStatus: () => request('runtime.status'),
-  runtimeInstall: () => request('runtime.install'),
+  runtimeInstall: (force = false) => request('runtime.install', force ? { force: true } : {}),
 };
 
 export function imageUrl(url) {

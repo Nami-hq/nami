@@ -66,6 +66,16 @@ export function remainingSeconds(currentTime, duration) {
   return Math.max(0, duration - current);
 }
 
+/** Keep the fresher of two learned marks so a late answer cannot move it back. */
+export function pickLearnedMark(current = null, incoming = null) {
+  if (!current) return incoming || null;
+  if (!incoming) return current;
+  const currentAt = Number(current.updatedAt) || 0;
+  const incomingAt = Number(incoming.updatedAt) || 0;
+  if (incomingAt !== currentAt) return incomingAt > currentAt ? incoming : current;
+  return (Number(incoming.end) || 0) > (Number(current.end) || 0) ? incoming : current;
+}
+
 /** The next prompt appears once the outro starts, not only when the file ends. */
 export function shouldOfferNext({ currentTime, duration, settings = {}, playing = true }) {
   if (!playing) return false;

@@ -12,6 +12,19 @@ test('adult keywords flag a title', () => {
   assert.match(gate.classify({ title: 'Ecchi Club' }).reason, /ecchi/);
 });
 
+test('a keyword inside a longer word is not a match', () => {
+  for (const title of ['My Hero Academia', 'Zero no Tsukaima', 'Hero Mask', 'XXXHOLiC']) {
+    assert.equal(gate.classify({ title }).adult, false, title);
+  }
+  for (const title of ['XXX', 'Ero', 'Ecchi Club', 'Hentai Club', '18+ Show', '21+ Cut']) {
+    assert.equal(gate.classify({ title }).adult, true, title);
+  }
+});
+
+test('classify keeps an existing adult flag', () => {
+  assert.equal(gate.classify({ title: 'Some Neutral Title', adult: true }).adult, true);
+});
+
 test('classify keeps the item and never drops fields', () => {
   const out = gate.classify({ title: 'Ecchi Club', poster: 'x.jpg', episodes: 12 });
   assert.equal(out.poster, 'x.jpg');

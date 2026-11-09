@@ -9,6 +9,7 @@ test('load the playback rules', async () => {
   rules = await import('../app/js/playback-rules.js');
   assert.equal(typeof rules.shouldOfferSkipIntro, 'function');
   assert.equal(typeof rules.shouldOfferNext, 'function');
+  assert.equal(typeof rules.pickLearnedMark, 'function');
 });
 
 const MINUTE = 60;
@@ -46,6 +47,18 @@ test('skipping twice moves the learned end deeper, never shallower', () => {
 test('a jump never lands behind the playhead', () => {
   assert.equal(rules.nextIntroEnd({ currentTime: 88, settings: {} }), 90);
   assert.equal(rules.nextIntroEnd({ currentTime: 200, settings: {} }), 202);
+});
+
+test('a late intro answer never overwrites a newer learned mark', () => {
+  const mine = { start: 5, end: 90, updatedAt: 200 };
+  assert.equal(rules.pickLearnedMark(mine, null), mine);
+  assert.equal(rules.pickLearnedMark(null, mine), mine);
+  assert.equal(rules.pickLearnedMark(mine, { start: 5, end: 60, updatedAt: 100 }), mine);
+  assert.equal(rules.pickLearnedMark(mine, { start: 5, end: 120, updatedAt: 300 }).end, 120);
+  assert.equal(
+    rules.pickLearnedMark({ start: 5, end: 80, updatedAt: 0 }, { start: 5, end: 120, updatedAt: 0 }).end,
+    120
+  );
 });
 
 test('next episode appears through the outro and not before it', () => {

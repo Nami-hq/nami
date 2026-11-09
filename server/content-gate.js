@@ -14,13 +14,22 @@ const KEYWORDS = [
   '21+',
   'xxx',
   'lewd',
-  'ero ',
+  'ero',
   'smut',
   'milf',
   'adult',
   'fan service',
   'fanservice',
 ];
+
+// Whole tokens only: "My Hero Academia" and "XXXHOLiC" must not match "ero" or
+// "xxx". A phrase also matches at the start and end of the text.
+const KEYWORD_PATTERNS = KEYWORDS.map((keyword) => ({
+  keyword,
+  pattern: new RegExp(
+    `(^|[^a-z0-9])${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`
+  ),
+}));
 
 const GENRES = ['hentai', 'ecchi', 'erotica', 'adult'];
 
@@ -38,14 +47,18 @@ function textOf(item) {
  */
 function classify(item) {
   if (!item || typeof item !== 'object') return { ...item, adult: false, reason: '' };
+  // Once a title is flagged, no later pass may clear it.
+  if (item.adult === true) {
+    return { ...item, adult: true, reason: item.reason || 'previously flagged' };
+  }
   const text = textOf(item);
   const genres = Array.isArray(item.genres) ? item.genres.map((g) => String(g).toLowerCase()) : [];
 
   for (const genre of genres) {
     if (GENRES.includes(genre)) return { ...item, adult: true, reason: `genre: ${genre}` };
   }
-  for (const keyword of KEYWORDS) {
-    if (text.includes(keyword)) return { ...item, adult: true, reason: `title: ${keyword.trim()}` };
+  for (const { keyword, pattern } of KEYWORD_PATTERNS) {
+    if (pattern.test(text)) return { ...item, adult: true, reason: `title: ${keyword}` };
   }
   return { ...item, adult: false, reason: '' };
 }
