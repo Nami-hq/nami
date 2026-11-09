@@ -1,5 +1,10 @@
 import { api, streamUrl, imageUrl } from './api.js';
 import { escapeHtml, icon, formatTime, bindImages } from './ui.js';
+import {
+  shouldOfferSkipIntro,
+  nextIntroEnd,
+  learnIntroSkips,
+} from './playback-rules.js';
 
 const IDLE_DELAY = 2800;
 const SAVE_INTERVAL = 5000;
@@ -36,6 +41,10 @@ export class Player {
     this.lastVolume = settings.muted ? 0 : Number(settings.volume) || 1;
     this.networkRetried = false;
     this.dragging = false;
+    this.introSkip = null;
+    this.learned = null;
+    this.introEvidence = null;
+    this.skipOffered = false;
   }
 
   /* ------------------------------ build -------------------------------- */
@@ -55,6 +64,10 @@ export class Player {
           <video class="player__video" playsinline preload="metadata"></video>
           <div class="player__flash"><span class="player__flash-icon">${icon('pause')}</span></div>
           <div class="player__buffer"><span class="spinner"></span></div>
+          <button class="player__skip" type="button" data-action="skip-intro" aria-hidden="true" tabindex="-1">
+            <span class="player__skip-label">Skip intro</span>
+            ${icon('next')}
+          </button>
         </div>
 
         <div class="player__chrome">
@@ -166,8 +179,7 @@ export class Player {
     this.video = q('.player__video');
     this.els = {
       stage: q('.player__stage'),
-      flash: q('.player__flash'),
-      epLabel: q('[data-ep-label]'),
+      flash: q('.player__flash'),      epLabel: q('[data-ep-label]'),
       qualityLabel: q('[data-quality-label]'),
       qualityButton: q('[data-quality-button]'),
       current: q('[data-current]'),
@@ -175,6 +187,7 @@ export class Player {
       scrub: q('.scrub'),
       fill: q('[data-fill]'),
       buffer: q('[data-buffer]'),
+      skipIntro: q('[data-action="skip-intro"]'),
       thumb: q('[data-thumb]'),
       tip: q('[data-tip]'),
       play: q('[data-action="toggle"]'),
@@ -237,6 +250,7 @@ export class Player {
     video.addEventListener('canplay', () => this.root.classList.remove('is-buffering'));
     video.addEventListener('timeupdate', () => {
       this.updateScrub();
+      this.updateSkipIntro();
       this.save();
     });
     video.addEventListener('progress', () => this.updateBuffer());
@@ -278,6 +292,9 @@ export class Player {
           break;
         case 'next':
           this.stepEpisode(1);
+          break;
+        case 'skip-intro':
+          this.skipIntro();
           break;
         case 'mute':
           this.toggleMute();
@@ -378,6 +395,10 @@ export class Player {
     this.lastSaved = 0;
     this.networkRetried = false;
     this.data = null;
+    this.introSkip = null;
+    this.learned = null;
+    this.introEvidence = null;
+    this.setSkipOffered(false);
     this.hideError();
     this.hideUpNext();
     this.closeMenus();
@@ -409,6 +430,7 @@ export class Player {
       this.setupSubtitles(data.subtitles || []);
       this.updateHeading();
       this.attach(data.masterUrl, data.referer);
+      this.loadIntro();
     } catch (error) {
       if (this.destroyed) return;
       this.root.classList.remove('is-buffering');
@@ -972,6 +994,7 @@ export class Player {
       clearTimeout(this.idleTimer);
       this.save();
     }
+    this.updateSkipIntro();
   }
 
   scheduleIdle() {
@@ -1034,6 +1057,95 @@ export class Player {
     } catch {
       /* unavailable */
     }
+  }
+
+  /* ------------------------------ intro ---------------------------------- */
+
+  // Marks come from AniSkip when it knows the title; otherwise the local
+  // window (settings plus whatever we learned here) carries it.
+  async loadIntro() {
+    const slug = this.context.slug;
+    const ep = this.ep;
+    if (!slug) return;
+    try {
+      const result = await api.skipTimes({ title: this.context.title, slug, ep });
+      if (this.destroyed || this.ep !== ep) return;
+      this.introSkip = result?.skip || null;
+      this.learned = result?.learned || null;
+      this.introEvidence = this.effectiveIntro();
+      this.updateSkipIntro();
+    } catch {
+      /* offline or the service is down: the local window still works */
+      this.introSkip = null;
+      this.introEvidence = this.learned || null;
+    }
+  }
+
+  effectiveIntro() {
+    const op = this.introSkip?.op;
+    if (op && Number.isFinite(op.start) && Number.isFinite(op.end)) {
+      return { start: op.start, end: op.end };
+    }
+    return this.learned || null;
+  }
+
+  setSkipOffered(offered) {
+    if (this.skipOffered === offered) return;
+    this.skipOffered = offered;
+    const button = this.els?.skipIntro;
+    if (!button) return;
+    button.classList.toggle('is-on', offered);
+    button.setAttribute('aria-hidden', String(!offered));
+    button.tabIndex = offered ? 0 : -1;
+  }
+
+  updateSkipIntro() {
+    if (!this.els?.skipIntro) return;
+    const offered = shouldOfferSkipIntro({
+      currentTime: this.video.currentTime || 0,
+      duration: Number(this.video.duration),
+      settings: this.settings,
+      learned: this.introEvidence,
+      playing: !this.video.paused && !this.video.ended,
+    });
+    this.setSkipOffered(offered);
+  }
+
+  skipIntro() {
+    const at = this.video.currentTime || 0;
+    const target = nextIntroEnd({
+      currentTime: at,
+      settings: this.settings,
+      learned: this.introEvidence,
+    });
+
+    if (Number.isFinite(this.video.duration) && this.video.readyState >= 1) {
+      this.video.currentTime = target;
+    } else {
+      this.pendingSeek = target;
+    }
+
+    this.setSkipOffered(false);
+    this.updateScrub();
+    this.save(true);
+    this.learnIntro(at);
+  }
+
+  // Remembers where the intro actually ended, so the next episode of the same
+  // title lands closer to the real mark.
+  learnIntro(at) {
+    if (!this.context.slug || !Number.isFinite(at)) return;
+    const mark = learnIntroSkips({
+      skips: this.learned?.skips || [],
+      at,
+      settings: this.settings,
+      learned: this.learned,
+    });
+    this.learned = mark;
+    if (!this.introSkip?.op) this.introEvidence = mark;
+    api.saveIntro({ slug: this.context.slug, mark }).catch(() => {
+      /* the local window still improves for this session */
+    });
   }
 
   /* ------------------------------ up next -------------------------------- */
@@ -1114,6 +1226,7 @@ export class Player {
     this.els.errorText.textContent = detail ? `${message} ${detail}` : message;
     this.els.error.classList.add('is-open');
     this.root.classList.remove('is-buffering', 'is-idle');
+    this.setSkipOffered(false);
     this.closeMenus();
     this.hideUpNext();
   }
