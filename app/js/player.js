@@ -1082,7 +1082,10 @@ export class Player {
     try {
       const result = await api.skipTimes({ title: this.context.title, slug, ep });
       if (this.destroyed || this.ep !== ep) return;
-      this.introSkip = result?.skip || null;
+      // A pending answer leaves the mark alone, so a mark pushed for this
+      // episode is not cleared by the reply to this same lookup.
+      if (result?.skip) this.introSkip = result.skip;
+      else if (!result?.pending) this.introSkip = null;
       this.learned = pickLearnedMark(this.learned, result?.learned || null);
       this.introEvidence = this.effectiveIntro();
       this.updateSkipIntro();
@@ -1305,6 +1308,7 @@ export class Player {
       slug: this.context.slug,
       title: this.context.title,
       poster: this.context.poster || '',
+      adult: this.context.adult === true,
       ep: this.ep,
       mode: this.mode,
       position,

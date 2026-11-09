@@ -20,7 +20,6 @@ const ANI_CLI_COMMIT = '2cc8ae2c27324c8e684e4dc4223698c1f6caec03';
 const ANI_CLI_SHA256 = 'be466708dd5bd5f5ae4feff3dbb47fc5f048a7f801f11e1264db9cab83c3d146';
 const ANI_CLI_URLS = [
   `https://raw.githubusercontent.com/pystardust/ani-cli/${ANI_CLI_COMMIT}/ani-cli`,
-  `https://raw.githubusercontent.com/ani-cli/ani-cli/${ANI_CLI_COMMIT}/ani-cli`,
 ];
 
 const YT_DLP_VERSION = '2026.10.26';

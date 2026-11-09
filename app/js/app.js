@@ -948,6 +948,7 @@ function startPlayback(ep, position = 0, mode = state.settings.mode) {
       slug: detail.slug,
       title: info.title || detail.slug,
       poster: info.poster || '',
+      adult: info.adult === true,
       mode,
       episodes: detail.episodes,
       ep: String(ep),
@@ -1215,7 +1216,7 @@ function openSetup() {
     const layer = document.createElement('div');
     layer.className = 'dialog-layer';
     layer.innerHTML = `
-      <div class="dialog setup" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+      <div class="dialog setup" role="dialog" aria-modal="true" aria-labelledby="setup-title" tabindex="-1">
         <span class="dialog__mark">${icon('wave')}</span>
         <h2 class="dialog__title" id="setup-title">Set up the player</h2>
         <p class="dialog__text">
@@ -1239,6 +1240,7 @@ function openSetup() {
     const laterButton = layer.querySelector('[data-setup="later"]');
     let settled = false;
     let installing = false;
+    let succeeded = false;
     let unsubscribe = null;
 
     const finish = (value) => {
@@ -1254,7 +1256,11 @@ function openSetup() {
     const onKey = (event) => {
       if (event.key === 'Tab') {
         const items = [...layer.querySelectorAll('button:not([disabled])')];
-        if (!items.length) return;
+        if (!items.length) {
+          event.preventDefault();
+          layer.querySelector('.dialog')?.focus();
+          return;
+        }
         const first = items[0];
         const last = items[items.length - 1];
         if (event.shiftKey && document.activeElement === first) {
@@ -1311,6 +1317,7 @@ function openSetup() {
         if (status.ready) {
           note.textContent = 'Ready. NAMI will use these from now on.';
           toast('Player tools ready', { type: 'success' });
+          succeeded = true;
           setTimeout(() => finish(status), 700);
         } else {
           note.textContent = 'The downloads did not finish. Check the connection and retry.';
@@ -1319,7 +1326,9 @@ function openSetup() {
         note.textContent = error.message;
       } finally {
         installing = false;
-        if (!settled) setBusy(false);
+        // Leave the buttons disabled while the success card closes, so a
+        // second click cannot start an install against the same temp file.
+        if (!settled && !succeeded) setBusy(false);
       }
     });
 
